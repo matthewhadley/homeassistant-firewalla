@@ -5,8 +5,8 @@ import fetch from "node-fetch";
 
 const FIREWALLA_VERSION = process.env.FIREWALLA_VERSION || 'dev';
 const FIREWALLA_IP = process.env.FIREWALLA_IP || "192.168.1.1";
-const FIREWALLA_PUBLIC_KEY_STRING = process.env.FIREWALLA_PUBLIC_KEY_STRING;
-const FIREWALLA_PRIVATE_KEY_STRING = process.env.FIREWALLA_PRIVATE_KEY_STRING;
+const FIREWALLA_PUBLIC_KEY_STRING = process.env.FIREWALLA_PUBLIC_KEY_STRING.split(' ').join('\n');
+const FIREWALLA_PRIVATE_KEY_STRING = process.env.FIREWALLA_PRIVATE_KEY_STRING.split(' ').join('\n');
 const FIREWALLA_INTERVAL = ((parseInt(process.env.FIREWALLA_INTERVAL) || 60) * 1000);
 const SUPERVISOR_TOKEN = process.env.SUPERVISOR_TOKEN;
 const DEBUG = process.env.FIREWALLA_DEBUG === "true";
@@ -115,9 +115,6 @@ async function queryFirewalla() {
   if (DEBUG_LOCAL_KEYS) {
     SecureUtil.importKeyPair('etp.public.pem', 'etp.private.pem');
   } else {
-    logger.debug('keys');
-    logger.debug(FIREWALLA_PUBLIC_KEY_STRING);
-    logger.debug(FIREWALLA_PRIVATE_KEY_STRING);
     SecureUtil.importKeyPairFromString(FIREWALLA_PUBLIC_KEY_STRING, FIREWALLA_PRIVATE_KEY_STRING);
   }
 

@@ -1,7 +1,7 @@
 name: "Firewalla"
 description: "A Home Assistant Add-on to fetch Firewalla network devices data"
 url: "https://github.com/matthewhadley/homeassistant-firewalla"
-version: 0.5.0
+version: 0.6.0
 slug: firewalla
 init: false
 stdin: true
