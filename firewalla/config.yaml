@@ -1,12 +1,13 @@
 name: "Firewalla"
 description: "A Home Assistant Add-on to fetch Firewalla network devices data"
 url: "https://github.com/matthewhadley/homeassistant-firewalla"
-version: 0.3.0
+version: 0.4.0
 slug: firewalla
 init: false
 stdin: true
 hassio_api: true
 homeassistant_api: true
+host_network: true
 options:
   firewalla_ip: null
   public_key_string: null
