@@ -1,3 +1,10 @@
+## [0.9.0] - 2024-11-28
+
+### Changed
+
+- Use static ip if set
+- local debug option
+
 ## [0.4.0] - 2024-11-27
 
 ### Changed

@@ -5,19 +5,18 @@ import fetch from "node-fetch";
 
 const FIREWALLA_VERSION = process.env.FIREWALLA_VERSION || 'dev';
 const FIREWALLA_IP = process.env.FIREWALLA_IP || "192.168.1.1";
-const FIREWALLA_PUBLIC_KEY_STRING = process.env.FIREWALLA_PUBLIC_KEY_STRING.replace(
+const FIREWALLA_PUBLIC_KEY_STRING = (process.env.FIREWALLA_PUBLIC_KEY_STRING || '').replace(
   /(?<=-----BEGIN PUBLIC KEY-----)([\s\S]*?)(?=-----END PUBLIC KEY-----)/,
   match => match.replace(/\s+/g, '\n')
 );
-const FIREWALLA_PRIVATE_KEY_STRING = process.env.FIREWALLA_PRIVATE_KEY_STRING.replace(
+const FIREWALLA_PRIVATE_KEY_STRING = (process.env.FIREWALLA_PRIVATE_KEY_STRING || '').replace(
   /(?<=-----BEGIN PRIVATE KEY-----)([\s\S]*?)(?=-----END PRIVATE KEY-----)/,
   match => match.replace(/\s+/g, '\n')
 );
 const FIREWALLA_INTERVAL = ((parseInt(process.env.FIREWALLA_INTERVAL) || 60) * 1000);
 const SUPERVISOR_TOKEN = process.env.SUPERVISOR_TOKEN;
+const DEBUG_LOCAL = process.env.FIREWALLA_DEBUG_LOCAL === "true"
 const DEBUG = process.env.FIREWALLA_DEBUG === "true";
-const DEBUG_DISABLE_HA = process.env.FIREWALLA_DISABLE_HA === "true"
-const DEBUG_LOCAL_KEYS = process.env.FIREWALLA_LOCAL_KEYS === "true"
 
 const logger = function (level, message) {
   let timestamp = dayjs().format("YYYY-MM-DD HH:mm:ss");
@@ -38,12 +37,18 @@ logger.debug = function (message) {
   }
 };
 
-logger.info(`Firewalla ${FIREWALLA_VERSION}`);
+if (!DEBUG_LOCAL) {
+  logger.info(`Firewalla ${FIREWALLA_VERSION}`);
+}
 
 function processHosts(data) {
   return data.hosts.map(host => {
       // Extract and transform properties
-      const ip = host.ip || "0.0.0.0";
+      const ip = host.ip ||
+      (host.policy?.ipAllocation?.allocations
+          ? Object.values(host.policy.ipAllocation.allocations)[0]?.ipv4
+          : null) ||
+      "0.0.0.0";
       const mac = host.mac || null;
       const macVendor = host.macVendor || null;
       const name = host.name || host.dhcpName || host.localDomain || null;
@@ -118,7 +123,7 @@ async function updateHA(data) {
 
 async function queryFirewalla() {
 
-  if (DEBUG_LOCAL_KEYS) {
+  if (DEBUG_LOCAL) {
     SecureUtil.importKeyPair('etp.public.pem', 'etp.private.pem');
   } else {
     SecureUtil.importKeyPairFromString(FIREWALLA_PUBLIC_KEY_STRING, FIREWALLA_PRIVATE_KEY_STRING);
@@ -132,6 +137,15 @@ async function queryFirewalla() {
   let hosts = await hostService.getAll();
 
   let devices = processHosts(hosts);
+
+  if (DEBUG_LOCAL) {
+    let data = {
+      hosts: hosts,
+      devices: devices
+    }
+    console.log(JSON.stringify(data, 0, 2));
+    process.exit(0);
+  }
 
   logger.info(`${devices.length} devices`);
 
