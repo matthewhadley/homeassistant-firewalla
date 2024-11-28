@@ -1,7 +1,7 @@
 name: "Firewalla"
 description: "A Home Assistant Add-on to fetch Firewalla network devices data"
 url: "https://github.com/matthewhadley/homeassistant-firewalla"
-version: 0.1.0
+version: 0.2.0
 slug: firewalla
 init: false
 stdin: true
@@ -11,13 +11,13 @@ options:
   firewalla_ip: null
   public_key_string: null
   private_key_string: null
-  interval: 5
+  interval: 60
   debug: true
 schema:
   firewalla_ip: str
   public_key_string: str
   private_key_string: str
-  interval: int(1,15)?
+  interval: int(1,3600)?
   debug: bool
 arch:
   - aarch64
