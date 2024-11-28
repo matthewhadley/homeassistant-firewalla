@@ -11,6 +11,7 @@ FIREWALLA_INTERVAL="$(bashio::config 'interval')"
 FIREWALLA_DEBUG="$(bashio::config 'debug')"
 
 export FIREWALLA_VERSION
+export FIREWALLA_IP
 export FIREWALLA_PUBLIC_KEY_STRING
 export FIREWALLA_PRIVATE_KEY_STRING
 export FIREWALLA_INTERVAL

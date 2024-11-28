@@ -115,6 +115,9 @@ async function queryFirewalla() {
   if (DEBUG_LOCAL_KEYS) {
     SecureUtil.importKeyPair('etp.public.pem', 'etp.private.pem');
   } else {
+    logger.debug('keys');
+    logger.debug(FIREWALLA_PUBLIC_KEY_STRING);
+    logger.debug(FIREWALLA_PRIVATE_KEY_STRING);
     SecureUtil.importKeyPairFromString(FIREWALLA_PUBLIC_KEY_STRING, FIREWALLA_PRIVATE_KEY_STRING);
   }
 
