@@ -1,0 +1,22 @@
+---
+configuration:
+  firewalla_ip:
+    name: Firewalla IP
+    description: >-
+      Firewalla IP Address
+  public_key_string:
+    name: Public Key String
+    description: >-
+      Public key string
+  private_key_string:
+    name: Private Key String
+    description: >-
+      Private key string
+  interval:
+    name: Interval
+    description: >-
+      Record data every n seconds
+  debug:
+    name: Debug
+    description: >-
+      Debug Logging
