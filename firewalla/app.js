@@ -1,5 +1,4 @@
 import { SecureUtil, FWGroup, FWGroupApi, HostService } from 'node-firewalla'
-import * as fs from 'fs';
 import dayjs from "dayjs";
 import fetch from "node-fetch";
 
@@ -145,11 +144,8 @@ async function queryFirewalla() {
     }
     console.log(JSON.stringify(data, 0, 2));
     process.exit(0);
-  }
-
-  logger.info(`${devices.length} devices`);
-
-  if (DEBUG_DISABLE_HA !== true) {
+  } else {
+    logger.info(`${devices.length} devices`);
     await updateHA(devices);
   }
 }
