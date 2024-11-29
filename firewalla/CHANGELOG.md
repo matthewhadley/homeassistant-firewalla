@@ -1,3 +1,9 @@
+## [0.12.0] - 2024-11-29
+
+### Changed
+
+- Experiment with short keys
+
 ## [0.11.0] - 2024-11-28
 
 ### Changed

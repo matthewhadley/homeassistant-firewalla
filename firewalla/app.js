@@ -48,30 +48,42 @@ function processHosts(data) {
           ? Object.values(host.policy.ipAllocation.allocations)[0]?.ipv4
           : null) ||
       "0.0.0.0";
-      const mac = host.mac || null;
+      const mac = (host.mac || null).replaceAll(':','');
       const vendor = host.macVendor || null;
       const name = host.name || host.dhcpName || host.localDomain || null;
+
+      // Generate id from MAC address
+      // const id = mac
+      //       ? "network_device_" + mac.replace(/:/g, "").toLowerCase().slice(-6)
+      //       : null;
 
       // Determine status
       // const status = host.policy?.deviceOffline === false ? "online" : "offline";
 
       // Extract lastActive and firstFound, flooring the values
-      const active = host.lastActive ? Math.floor(host.lastActive) : null;
-      const found = host.firstFound ? Math.floor(host.firstFound) : null;
+      const lastActive = host.lastActive ? Math.floor(host.lastActive) : null;
+      const firstFound = host.firstFound ? Math.floor(host.firstFound) : null;
 
       // Extract ipAllocationType
-      const dhcp = host.policy?.ipAllocation?.allocations
+      let ipAllocationType = host.policy?.ipAllocation?.allocations
           ? Object.values(host.policy.ipAllocation.allocations)[0]?.type || "dynamic"
           : "dynamic";
 
+      if (ipAllocationType === 'static') {
+        ipAllocationType = 's';
+      } else {
+        ipAllocationType = 'd';
+      }
+
       return {
-          name,
+          // id,
+          n: name,
           ip,
-          mac,
-          vendor,
-          active,
-          found,
-          dhcp
+          m: mac,
+          v: vendor,
+          a: lastActive,
+          f: firstFound,
+          t: ipAllocationType
       };
   }).sort((a, b) => {
       // Sort by IP address numerically
