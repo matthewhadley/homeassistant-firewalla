@@ -49,35 +49,29 @@ function processHosts(data) {
           : null) ||
       "0.0.0.0";
       const mac = host.mac || null;
-      const macVendor = host.macVendor || null;
+      const vendor = host.macVendor || null;
       const name = host.name || host.dhcpName || host.localDomain || null;
-
-      // Generate id from MAC address
-      const id = mac
-            ? "network_device_" + mac.replace(/:/g, "").toLowerCase().slice(-6)
-            : null;
 
       // Determine status
       // const status = host.policy?.deviceOffline === false ? "online" : "offline";
 
       // Extract lastActive and firstFound, flooring the values
-      const lastActive = host.lastActive ? Math.floor(host.lastActive) : null;
-      const firstFound = host.firstFound ? Math.floor(host.firstFound) : null;
+      const active = host.lastActive ? Math.floor(host.lastActive) : null;
+      const found = host.firstFound ? Math.floor(host.firstFound) : null;
 
       // Extract ipAllocationType
-      const ipAllocationType = host.policy?.ipAllocation?.allocations
+      const dhcp = host.policy?.ipAllocation?.allocations
           ? Object.values(host.policy.ipAllocation.allocations)[0]?.type || "dynamic"
           : "dynamic";
 
       return {
-          id,
           name,
           ip,
           mac,
-          macVendor,
-          lastActive,
-          firstFound,
-          ipAllocationType
+          vendor,
+          active,
+          found,
+          dhcp
       };
   }).sort((a, b) => {
       // Sort by IP address numerically

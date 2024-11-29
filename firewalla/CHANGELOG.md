@@ -1,3 +1,9 @@
+## [0.11.0] - 2024-11-28
+
+### Changed
+
+- Shorten key props to avoid attribute byte size restriction in HA
+
 ## [0.10.0] - 2024-11-28
 
 ### Fixed
