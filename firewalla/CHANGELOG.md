@@ -1,3 +1,9 @@
+## [1.0.0] - 2024-11-29
+
+### Changed
+
+- Switch to a sensor per device
+
 ## [0.12.0] - 2024-11-29
 
 ### Changed

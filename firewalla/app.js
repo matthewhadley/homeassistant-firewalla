@@ -14,8 +14,11 @@ const FIREWALLA_PRIVATE_KEY_STRING = (process.env.FIREWALLA_PRIVATE_KEY_STRING |
 );
 const FIREWALLA_INTERVAL = ((parseInt(process.env.FIREWALLA_INTERVAL) || 60) * 1000);
 const SUPERVISOR_TOKEN = process.env.SUPERVISOR_TOKEN;
-const DEBUG_LOCAL = process.env.FIREWALLA_DEBUG_LOCAL === "true"
+const DEBUG_LOCAL = process.env.DEBUG_LOCAL === "true"
+const DEBUG_DUMP = process.env.DEBUG_DUMP === "true"
 const DEBUG = process.env.FIREWALLA_DEBUG === "true";
+
+const HA_URL = process.env.HA_URL || "http://supervisor/core";
 
 const logger = function (level, message) {
   let timestamp = dayjs().format("YYYY-MM-DD HH:mm:ss");
@@ -36,7 +39,7 @@ logger.debug = function (message) {
   }
 };
 
-if (!DEBUG_LOCAL) {
+if (!DEBUG_DUMP) {
   logger.info(`Firewalla ${FIREWALLA_VERSION}`);
 }
 
@@ -47,49 +50,46 @@ function processHosts(data) {
       (host.policy?.ipAllocation?.allocations
           ? Object.values(host.policy.ipAllocation.allocations)[0]?.ipv4
           : null) ||
-      "0.0.0.0";
-      const mac = (host.mac || null).replaceAll(':','');
+      "-";
+      const MAC = host.mac || null;
       const vendor = host.macVendor || null;
       const name = host.name || host.dhcpName || host.localDomain || null;
 
       // Generate id from MAC address
-      // const id = mac
-      //       ? "network_device_" + mac.replace(/:/g, "").toLowerCase().slice(-6)
-      //       : null;
-
-      // Determine status
-      // const status = host.policy?.deviceOffline === false ? "online" : "offline";
+      const id = MAC
+            ? "firewalla_network_device_" + MAC.replace(/:/g, "").toLowerCase().slice(-6)
+            : null;
 
       // Extract lastActive and firstFound, flooring the values
-      const lastActive = host.lastActive ? Math.floor(host.lastActive) : null;
-      const firstFound = host.firstFound ? Math.floor(host.firstFound) : null;
+      const state = dayjs((Math.floor(host.lastActive) * 1000)).format('YYYY-MM-DDTHH:mm:ss');
+
+
+      const found = dayjs((Math.floor(host.firstFound) * 1000)).format('YYYY-MM-DDTHH:mm:ss');
 
       // Extract ipAllocationType
-      let ipAllocationType = host.policy?.ipAllocation?.allocations
+      const DHCP = host.policy?.ipAllocation?.allocations
           ? Object.values(host.policy.ipAllocation.allocations)[0]?.type || "dynamic"
           : "dynamic";
 
-      if (ipAllocationType === 'static') {
-        ipAllocationType = 's';
-      } else {
-        ipAllocationType = 'd';
-      }
 
       return {
-          // id,
-          n: name,
-          ip,
-          m: mac,
-          v: vendor,
-          a: lastActive,
-          f: firstFound,
-          t: ipAllocationType
+          state,
+          id,
+          attributes: {
+            icon: 'mdi:ip-network',
+            friendly_name: name,
+            ip,
+            MAC,
+            vendor,
+            found,
+            DHCP
+          }
       };
   }).sort((a, b) => {
       // Sort by IP address numerically
       const parseIP = ip => ip.split(".").map(num => parseInt(num, 10));
-      const ipA = parseIP(a.ip);
-      const ipB = parseIP(b.ip);
+      const ipA = parseIP(a.attributes.ip);
+      const ipB = parseIP(b.attributes.ip);
 
       for (let i = 0; i < 4; i++) {
           if (ipA[i] !== ipB[i]) {
@@ -101,29 +101,21 @@ function processHosts(data) {
 }
 
 async function updateHA(data) {
-    try {
-      const response = await fetch(
-        "http://supervisor/core/api/states/sensor.firewalla_devices",
-        {
-          method: "POST",
-          body: JSON.stringify({
-            state: data.length,
-            attributes: {
-              friendly_name: "Firewalla Devices",
-              icon: "mdi:wifi",
-              devices: data
-            },
-          }),
-          headers: {
-            Authorization: `Bearer ${SUPERVISOR_TOKEN}`,
-            "Content-Type": "application/json",
-          },
+  try {
+    const response = await fetch(
+      `${HA_URL}/api/states/sensor.${data.id}`,
+      {
+        method: "POST",
+        body: JSON.stringify(data),
+        headers: {
+          Authorization: `Bearer ${SUPERVISOR_TOKEN}`,
+          "Content-Type": "application/json",
         },
-      );
-    } catch (error) {
-      console.log(error);
-    }
-
+      },
+    );
+  } catch (error) {
+    console.log(error);
+  }
 }
 
 async function queryFirewalla() {
@@ -143,17 +135,16 @@ async function queryFirewalla() {
 
   let devices = processHosts(hosts);
 
-  if (DEBUG_LOCAL) {
-    let data = {
-      hosts: hosts,
-      devices: devices
-    }
-    console.log(JSON.stringify(data, 0, 2));
-    process.exit(0);
+  if (DEBUG_DUMP) {
+    console.log(JSON.stringify(devices, 0, 2));
+    process.exit();
   } else {
     logger.info(`${devices.length} devices`);
-    await updateHA(devices);
+    devices.forEach(async device => {
+      await updateHA(device);
+    });
   }
+
 }
 
 await queryFirewalla();
