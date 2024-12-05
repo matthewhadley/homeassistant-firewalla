@@ -20,22 +20,28 @@ const DEBUG = process.env.FIREWALLA_DEBUG === "true";
 
 const HA_URL = process.env.HA_URL || "http://supervisor/core";
 
-const logger = function (level, message) {
+const logger = function (level, ...messages) {
   let timestamp = dayjs().format("YYYY-MM-DD HH:mm:ss");
-  console.log(`[${timestamp}] ${level}: ${message}`);
+
+  let combinedMessage = messages
+    .map(message => (typeof message === "object" ? JSON.stringify(message) : message))
+    .join(" ");
+
+  console.log(`[${timestamp}] ${level}: ${combinedMessage}`);
 };
-logger.info = function (message) {
-  logger("INFO", message);
+
+logger.info = function (...messages) {
+  logger("INFO", ...messages);
 };
-logger.warn = function (message) {
-  logger("WARN", message);
+logger.warn = function (...messages) {
+  logger("WARN", ...messages);
 };
-logger.error = function (message) {
-  logger("ERROR", message);
+logger.error = function (...messages) {
+  logger("ERROR", ...messages);
 };
-logger.debug = function (message) {
+logger.debug = function (...messages) {
   if (DEBUG) {
-    logger("DEBUG", message);
+    logger("DEBUG", ...messages);
   }
 };
 
