@@ -1,3 +1,9 @@
+## [1.1.0] - 2024-12-05
+
+### Changed
+
+- Set device class as timestamp
+
 ## [1.0.0] - 2024-11-29
 
 ### Changed

@@ -81,6 +81,7 @@ function processHosts(data) {
       return {
           state,
           id,
+          device_class: "timestamp",
           attributes: {
             icon: 'mdi:ip-network',
             friendly_name: name,
