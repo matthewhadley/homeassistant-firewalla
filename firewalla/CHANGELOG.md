@@ -1,3 +1,9 @@
+## [1.2.0] - 2024-12-08
+
+### Added
+
+- Catch erros talking to firewalla
+
 ## [1.1.0] - 2024-12-05
 
 ### Changed

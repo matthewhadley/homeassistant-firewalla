@@ -126,32 +126,34 @@ async function updateHA(data) {
 }
 
 async function queryFirewalla() {
+  try {
+    if (DEBUG_LOCAL) {
+      SecureUtil.importKeyPair('etp.public.pem', 'etp.private.pem');
+    } else {
+      SecureUtil.importKeyPairFromString(FIREWALLA_PUBLIC_KEY_STRING, FIREWALLA_PRIVATE_KEY_STRING);
+    }
 
-  if (DEBUG_LOCAL) {
-    SecureUtil.importKeyPair('etp.public.pem', 'etp.private.pem');
-  } else {
-    SecureUtil.importKeyPairFromString(FIREWALLA_PUBLIC_KEY_STRING, FIREWALLA_PRIVATE_KEY_STRING);
+    let { groups } = await FWGroupApi.login();
+    let fwGroup = FWGroup.fromJson(groups[0], FIREWALLA_IP);
+
+    // List all hosts connected to your firewalla
+    let hostService = new HostService(fwGroup);
+    let hosts = await hostService.getAll();
+
+    let devices = processHosts(hosts);
+
+    if (DEBUG_DUMP) {
+      console.log(JSON.stringify(devices, 0, 2));
+      process.exit();
+    } else {
+      logger.info(`${devices.length} devices`);
+      devices.forEach(async device => {
+        await updateHA(device);
+      });
+    }
+  } catch (error) {
+    logger.error(error);
   }
-
-  let { groups } = await FWGroupApi.login();
-  let fwGroup = FWGroup.fromJson(groups[0], FIREWALLA_IP);
-
-  // List all hosts connected to your firewalla
-  let hostService = new HostService(fwGroup);
-  let hosts = await hostService.getAll();
-
-  let devices = processHosts(hosts);
-
-  if (DEBUG_DUMP) {
-    console.log(JSON.stringify(devices, 0, 2));
-    process.exit();
-  } else {
-    logger.info(`${devices.length} devices`);
-    devices.forEach(async device => {
-      await updateHA(device);
-    });
-  }
-
 }
 
 await queryFirewalla();
