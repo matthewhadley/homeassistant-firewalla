@@ -1,6 +1,12 @@
+## [1.5.0] - 2024-12-20
+
+### Added
+
+- Add friendly names
+
 ## [1.4.0] - 2024-12-20
 
-### CHanged
+### Changed
 
 - Speedtest results ids
 
