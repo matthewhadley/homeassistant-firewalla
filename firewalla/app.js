@@ -150,7 +150,7 @@ async function queryFirewalla() {
     let speedTest = await networkService.getSpeedtestResults();
 
     try {
-      let speedTestTimestamp = parseInt(speedTest.results[0].timestamp);
+      let speedTestTimestamp = dayjs((Math.floor(speedTest.results[0].timestamp) * 1000)).format('YYYY-MM-DDTHH:mm:ss')
       if (speedTestTimestampLast !== speedTestTimestamp) {
         speedTestTimestampLast = speedTestTimestamp;
         let speedTestUpload = parseFloat(speedTest.results[0].result.upload.toFixed(2));

@@ -1,3 +1,9 @@
+## [1.8.0] - 2024-12-20
+
+### Changed
+
+- new timestamp format
+
 ## [1.7.0] - 2024-12-20
 
 ### Added
