@@ -1,3 +1,9 @@
+## [1.4.0] - 2024-12-20
+
+### CHanged
+
+- Speedtest results ids
+
 ## [1.3.0] - 2024-12-20
 
 ### Added

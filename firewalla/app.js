@@ -159,21 +159,21 @@ async function queryFirewalla() {
         logger.info(`speedTest ${speedTestUpload} Mbit/s up, ${speedTestDownload} Mbit/s down (timestamp ${speedTestTimestamp})`);
 
         await updateHA({
-          id: 'speedTestUpload',
+          id: 'speedtest_upload',
           state: speedTestUpload,
-          unit_of_measurement: "Mbit/s",
-          icon: "mdi:speedometer",
           attributes: {
+            icon: "mdi:speedometer",
+            unit_of_measurement: "Mbit/s",
             timestamp: speedTestTimestamp
           }
         });
 
         await updateHA({
-          id: 'speedTestDownload',
+          id: 'speedtest_download',
           state: speedTestDownload,
-          unit_of_measurement: "Mbit/s",
-          icon: "mdi:speedometer",
           attributes: {
+            icon: "mdi:speedometer",
+            unit_of_measurement: "Mbit/s",
             timestamp: speedTestTimestamp
           }
         });
