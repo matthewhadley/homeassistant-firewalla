@@ -1,3 +1,9 @@
+## [1.6.0] - 2024-12-20
+
+### Added
+
+- device class for speedtest sensors
+
 ## [1.5.0] - 2024-12-20
 
 ### Added
