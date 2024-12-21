@@ -1,3 +1,9 @@
+## [1.7.0] - 2024-12-20
+
+### Added
+
+- state class for speedtest sensors
+
 ## [1.6.0] - 2024-12-20
 
 ### Added

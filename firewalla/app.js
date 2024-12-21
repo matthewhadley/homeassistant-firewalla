@@ -164,6 +164,7 @@ async function queryFirewalla() {
           attributes: {
             icon: "mdi:speedometer",
             device_class: "data_rate",
+            state_class: "measurement",
             friendly_name: "SpeedTest Upload",
             unit_of_measurement: "Mbit/s",
             timestamp: speedTestTimestamp
@@ -176,6 +177,7 @@ async function queryFirewalla() {
           attributes: {
             icon: "mdi:speedometer",
             device_class: "data_rate",
+            state_class: "measurement",
             friendly_name: "SpeedTest Download",
             unit_of_measurement: "Mbit/s",
             timestamp: speedTestTimestamp
