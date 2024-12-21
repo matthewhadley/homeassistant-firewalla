@@ -1,4 +1,4 @@
-import { SecureUtil, FWGroup, FWGroupApi, HostService } from 'node-firewalla'
+import { SecureUtil, FWGroup, FWGroupApi, HostService, NetworkService } from 'node-firewalla'
 import dayjs from "dayjs";
 import fetch from "node-fetch";
 
@@ -24,7 +24,15 @@ const logger = function (level, ...messages) {
   let timestamp = dayjs().format("YYYY-MM-DD HH:mm:ss");
 
   let combinedMessage = messages
-    .map(message => (typeof message === "object" ? JSON.stringify(message) : message))
+    .map(message => {
+      if (message instanceof Error) {
+        return message.stack.replace('Error: ','').replaceAll('\n    ',' ');
+      } else if (typeof message === "object") {
+        return JSON.stringify(message);
+      } else {
+        return message;
+      }
+    })
     .join(" ");
 
   console.log(`[${timestamp}] ${level}: ${combinedMessage}`);
@@ -125,6 +133,8 @@ async function updateHA(data) {
   }
 }
 
+let speedTestTimestampLast;
+
 async function queryFirewalla() {
   try {
     if (DEBUG_LOCAL) {
@@ -135,6 +145,43 @@ async function queryFirewalla() {
 
     let { groups } = await FWGroupApi.login();
     let fwGroup = FWGroup.fromJson(groups[0], FIREWALLA_IP);
+
+    let networkService = new NetworkService(fwGroup);
+    let speedTest = await networkService.getSpeedtestResults();
+
+    try {
+      let speedTestTimestamp = parseInt(speedTest.results[0].timestamp);
+      if (speedTestTimestampLast !== speedTestTimestamp) {
+        speedTestTimestampLast = speedTestTimestamp;
+        let speedTestUpload = parseFloat(speedTest.results[0].result.upload.toFixed(2));
+        let speedTestDownload = parseFloat(speedTest.results[0].result.download.toFixed(2));
+
+        logger.info(`speedTest ${speedTestUpload} Mbit/s up, ${speedTestDownload} Mbit/s down (timestamp ${speedTestTimestamp})`);
+
+        await updateHA({
+          id: 'speedTestUpload',
+          state: speedTestUpload,
+          unit_of_measurement: "Mbit/s",
+          icon: "mdi:speedometer",
+          attributes: {
+            timestamp: speedTestTimestamp
+          }
+        });
+
+        await updateHA({
+          id: 'speedTestDownload',
+          state: speedTestDownload,
+          unit_of_measurement: "Mbit/s",
+          icon: "mdi:speedometer",
+          attributes: {
+            timestamp: speedTestTimestamp
+          }
+        });
+      }
+
+    } catch (error) {
+      logger.error(error);
+    }
 
     // List all hosts connected to your firewalla
     let hostService = new HostService(fwGroup);
