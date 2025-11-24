@@ -1,21 +1,32 @@
-import { SecureUtil, FWGroup, FWGroupApi, HostService, NetworkService } from 'node-firewalla'
+import {
+  SecureUtil,
+  FWGroup,
+  FWGroupApi,
+  HostService,
+  NetworkService,
+} from "node-firewalla";
 import dayjs from "dayjs";
 import fetch from "node-fetch";
 
-const FIREWALLA_VERSION = process.env.FIREWALLA_VERSION || 'dev';
+const FIREWALLA_VERSION = process.env.FIREWALLA_VERSION || "dev";
 const FIREWALLA_IP = process.env.FIREWALLA_IP || "192.168.1.1";
-const FIREWALLA_PUBLIC_KEY_STRING = (process.env.FIREWALLA_PUBLIC_KEY_STRING || '').replace(
+const FIREWALLA_PUBLIC_KEY_STRING = (
+  process.env.FIREWALLA_PUBLIC_KEY_STRING || ""
+).replace(
   /(?<=-----BEGIN PUBLIC KEY-----)([\s\S]*?)(?=-----END PUBLIC KEY-----)/,
-  match => match.replace(/\s+/g, '\n')
+  (match) => match.replace(/\s+/g, "\n")
 );
-const FIREWALLA_PRIVATE_KEY_STRING = (process.env.FIREWALLA_PRIVATE_KEY_STRING || '').replace(
+const FIREWALLA_PRIVATE_KEY_STRING = (
+  process.env.FIREWALLA_PRIVATE_KEY_STRING || ""
+).replace(
   /(?<=-----BEGIN PRIVATE KEY-----)([\s\S]*?)(?=-----END PRIVATE KEY-----)/,
-  match => match.replace(/\s+/g, '\n')
+  (match) => match.replace(/\s+/g, "\n")
 );
-const FIREWALLA_INTERVAL = ((parseInt(process.env.FIREWALLA_INTERVAL) || 60) * 1000);
+const FIREWALLA_INTERVAL =
+  (parseInt(process.env.FIREWALLA_INTERVAL) || 60) * 1000;
 const SUPERVISOR_TOKEN = process.env.SUPERVISOR_TOKEN;
-const DEBUG_LOCAL = process.env.DEBUG_LOCAL === "true"
-const DEBUG_DUMP = process.env.DEBUG_DUMP === "true"
+const DEBUG_LOCAL = process.env.DEBUG_LOCAL === "true";
+const DEBUG_DUMP = process.env.DEBUG_DUMP === "true";
 const DEBUG = process.env.FIREWALLA_DEBUG === "true";
 
 const HA_URL = process.env.HA_URL || "http://supervisor/core";
@@ -24,9 +35,9 @@ const logger = function (level, ...messages) {
   let timestamp = dayjs().format("YYYY-MM-DD HH:mm:ss");
 
   let combinedMessage = messages
-    .map(message => {
+    .map((message) => {
       if (message instanceof Error) {
-        return message.stack.replace('Error: ','').replaceAll('\n    ',' ');
+        return message.stack.replace("Error: ", "").replaceAll("\n    ", " ");
       } else if (typeof message === "object") {
         return JSON.stringify(message);
       } else {
@@ -57,77 +68,168 @@ if (!DEBUG_DUMP) {
   logger.info(`Firewalla ${FIREWALLA_VERSION}`);
 }
 
+// Return an array of entity_ids for all sensor.firewalla_network_device_* in Home Assistant
+async function getHomeAssistantFirewallaNetworkDevices() {
+  try {
+    const response = await fetch(`${HA_URL}/api/states`, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${SUPERVISOR_TOKEN}`,
+        "Content-Type": "application/json",
+      },
+    });
+
+    if (!response.ok) {
+      logger.warn(
+        "Failed to fetch Home Assistant states for Firewalla devices",
+        response.status,
+        response.statusText
+      );
+      return [];
+    }
+
+    const states = await response.json();
+
+    return states
+      .filter(
+        (s) =>
+          s.entity_id &&
+          s.entity_id.startsWith("sensor.firewalla_network_device_")
+      )
+      .map((s) => s.entity_id);
+  } catch (error) {
+    logger.error(
+      "Error while fetching Home Assistant Firewalla network devices",
+      error
+    );
+    return [];
+  }
+}
+
+// Cleanup Firewalla device sensors in Home Assistant.
+// If keepEntityIds is empty (or omitted), all Firewalla sensors will be deleted.
+// Otherwise, only sensors not in keepEntityIds will be deleted.
+async function cleanupFirewallaDevices(keepEntityIds = []) {
+  try {
+    const haEntityIds = await getHomeAssistantFirewallaNetworkDevices();
+
+    const keepSet = new Set(keepEntityIds);
+
+    const toDelete =
+      keepEntityIds.length === 0
+        ? haEntityIds
+        : haEntityIds.filter((id) => !keepSet.has(id));
+
+    if (toDelete.length) {
+      logger.info(
+        `Found ${toDelete.length} Firewalla device sensors to delete`
+      );
+    } else {
+      logger.debug("No Firewalla device sensors to delete");
+    }
+
+    for (const id of toDelete) {
+      const deleteResponse = await fetch(
+        `${HA_URL}/api/states/${encodeURIComponent(id)}`,
+        {
+          method: "DELETE",
+          headers: {
+            Authorization: `Bearer ${SUPERVISOR_TOKEN}`,
+            "Content-Type": "application/json",
+          },
+        }
+      );
+
+      if (!deleteResponse.ok) {
+        logger.warn(
+          `Failed to delete Firewalla sensor ${id}`,
+          deleteResponse.status,
+          deleteResponse.statusText
+        );
+      } else {
+        logger.debug(`Deleted Firewalla sensor ${id}`);
+      }
+    }
+  } catch (error) {
+    logger.error("Error during Firewalla device cleanup", error);
+  }
+}
+
 function processHosts(data) {
-  return data.hosts.map(host => {
+  return data.hosts
+    .map((host) => {
       // Extract and transform properties
-      const ip = host.ip ||
-      (host.policy?.ipAllocation?.allocations
+      const ip =
+        host.ip ||
+        (host.policy?.ipAllocation?.allocations
           ? Object.values(host.policy.ipAllocation.allocations)[0]?.ipv4
           : null) ||
-      "-";
+        "-";
       const MAC = host.mac || null;
       const vendor = host.macVendor || null;
       const name = host.name || host.dhcpName || host.localDomain || null;
 
       // Generate id from MAC address
       const id = MAC
-            ? "firewalla_network_device_" + MAC.replace(/:/g, "").toLowerCase().slice(-6)
-            : null;
+        ? "firewalla_network_device_" +
+          MAC.replace(/:/g, "").toLowerCase().slice(-6)
+        : null;
 
       // Extract lastActive and firstFound, flooring the values
-      const state = dayjs((Math.floor(host.lastActive) * 1000)).format('YYYY-MM-DDTHH:mm:ss');
+      const state = dayjs(Math.floor(host.lastActive) * 1000).format(
+        "YYYY-MM-DDTHH:mm:ss"
+      );
 
-
-      const found = dayjs((Math.floor(host.firstFound) * 1000)).format('YYYY-MM-DDTHH:mm:ss');
+      const found = dayjs(Math.floor(host.firstFound) * 1000).format(
+        "YYYY-MM-DDTHH:mm:ss"
+      );
 
       // Extract ipAllocationType
       const DHCP = host.policy?.ipAllocation?.allocations
-          ? Object.values(host.policy.ipAllocation.allocations)[0]?.type || "dynamic"
-          : "dynamic";
-
+        ? Object.values(host.policy.ipAllocation.allocations)[0]?.type ||
+          "dynamic"
+        : "dynamic";
 
       return {
-          state,
-          id,
-          device_class: "timestamp",
-          attributes: {
-            icon: 'mdi:ip-network',
-            friendly_name: name,
-            ip,
-            MAC,
-            vendor,
-            found,
-            DHCP
-          }
+        state,
+        id,
+        device_class: "timestamp",
+        attributes: {
+          icon: "mdi:ip-network",
+          friendly_name: name,
+          ip,
+          MAC,
+          vendor,
+          found,
+          DHCP,
+        },
       };
-  }).sort((a, b) => {
+    })
+    .sort((a, b) => {
       // Sort by IP address numerically
-      const parseIP = ip => ip.split(".").map(num => parseInt(num, 10));
+      const parseIP = (ip) => ip.split(".").map((num) => parseInt(num, 10));
       const ipA = parseIP(a.attributes.ip);
       const ipB = parseIP(b.attributes.ip);
 
       for (let i = 0; i < 4; i++) {
-          if (ipA[i] !== ipB[i]) {
-              return ipA[i] - ipB[i];
-          }
+        if (ipA[i] !== ipB[i]) {
+          return ipA[i] - ipB[i];
+        }
       }
       return 0;
-  });
+    });
 }
 
 async function updateHA(data) {
   try {
-    const response = await fetch(
-      `${HA_URL}/api/states/sensor.${data.id}`,
-      {
-        method: "POST",
-        body: JSON.stringify(data),
-        headers: {
-          Authorization: `Bearer ${SUPERVISOR_TOKEN}`,
-          "Content-Type": "application/json",
-        },
+    const response = await fetch(`${HA_URL}/api/states/sensor.${data.id}`, {
+      method: "POST",
+      body: JSON.stringify(data),
+      headers: {
+        Authorization: `Bearer ${SUPERVISOR_TOKEN}`,
+        "Content-Type": "application/json",
       },
-    );
+    });
   } catch (error) {
     console.log(error);
   }
@@ -138,9 +240,12 @@ let speedTestTimestampLast;
 async function queryFirewalla() {
   try {
     if (DEBUG_LOCAL) {
-      SecureUtil.importKeyPair('etp.public.pem', 'etp.private.pem');
+      SecureUtil.importKeyPair("etp.public.pem", "etp.private.pem");
     } else {
-      SecureUtil.importKeyPairFromString(FIREWALLA_PUBLIC_KEY_STRING, FIREWALLA_PRIVATE_KEY_STRING);
+      SecureUtil.importKeyPairFromString(
+        FIREWALLA_PUBLIC_KEY_STRING,
+        FIREWALLA_PRIVATE_KEY_STRING
+      );
     }
 
     let { groups } = await FWGroupApi.login();
@@ -150,16 +255,24 @@ async function queryFirewalla() {
     let speedTest = await networkService.getSpeedtestResults();
 
     try {
-      let speedTestTimestamp = dayjs((Math.floor(speedTest.results[0].timestamp) * 1000)).format('YYYY-MM-DDTHH:mm:ss')
+      let speedTestTimestamp = dayjs(
+        Math.floor(speedTest.results[0].timestamp) * 1000
+      ).format("YYYY-MM-DDTHH:mm:ss");
       if (speedTestTimestampLast !== speedTestTimestamp) {
         speedTestTimestampLast = speedTestTimestamp;
-        let speedTestUpload = parseFloat(speedTest.results[0].result.upload.toFixed(2));
-        let speedTestDownload = parseFloat(speedTest.results[0].result.download.toFixed(2));
+        let speedTestUpload = parseFloat(
+          speedTest.results[0].result.upload.toFixed(2)
+        );
+        let speedTestDownload = parseFloat(
+          speedTest.results[0].result.download.toFixed(2)
+        );
 
-        logger.info(`speedTest ${speedTestUpload} Mbit/s up, ${speedTestDownload} Mbit/s down (timestamp ${speedTestTimestamp})`);
+        logger.info(
+          `speedTest ${speedTestUpload} Mbit/s up, ${speedTestDownload} Mbit/s down (timestamp ${speedTestTimestamp})`
+        );
 
         await updateHA({
-          id: 'speedtest_upload',
+          id: "speedtest_upload",
           state: speedTestUpload,
           attributes: {
             icon: "mdi:speedometer",
@@ -167,12 +280,12 @@ async function queryFirewalla() {
             state_class: "measurement",
             friendly_name: "SpeedTest Upload",
             unit_of_measurement: "Mbit/s",
-            timestamp: speedTestTimestamp
-          }
+            timestamp: speedTestTimestamp,
+          },
         });
 
         await updateHA({
-          id: 'speedtest_download',
+          id: "speedtest_download",
           state: speedTestDownload,
           attributes: {
             icon: "mdi:speedometer",
@@ -180,11 +293,10 @@ async function queryFirewalla() {
             state_class: "measurement",
             friendly_name: "SpeedTest Download",
             unit_of_measurement: "Mbit/s",
-            timestamp: speedTestTimestamp
-          }
+            timestamp: speedTestTimestamp,
+          },
         });
       }
-
     } catch (error) {
       logger.error(error);
     }
@@ -195,12 +307,19 @@ async function queryFirewalla() {
 
     let devices = processHosts(hosts);
 
+    const keepEntityIds = devices
+      .map((d) => d.id)
+      .filter((id) => !!id)
+      .map((id) => `sensor.${id}`);
+
+    await cleanupFirewallaDevices(keepEntityIds);
+
     if (DEBUG_DUMP) {
       console.log(JSON.stringify(devices, 0, 2));
       process.exit();
     } else {
       logger.info(`${devices.length} devices`);
-      devices.forEach(async device => {
+      devices.forEach(async (device) => {
         await updateHA(device);
       });
     }
@@ -209,7 +328,8 @@ async function queryFirewalla() {
   }
 }
 
+await cleanupFirewallaDevices();
 await queryFirewalla();
-setInterval(async function() {
+setInterval(async function () {
   await queryFirewalla();
 }, FIREWALLA_INTERVAL);

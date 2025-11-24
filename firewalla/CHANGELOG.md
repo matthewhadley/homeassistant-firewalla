@@ -1,3 +1,9 @@
+## [2.0.0] - 2025-11-24
+
+### Changed
+
+- keep homeassistant Firewalla detected devices in sync with Firewalla devices scan
+
 ## [1.8.0] - 2024-12-20
 
 ### Changed
