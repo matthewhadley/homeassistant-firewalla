@@ -203,7 +203,7 @@ async function cleanupFirewallaDevices(keepEntityIds = []) {
         );
       } else {
         if (keepEntityIds.length !== 0) {
-          logger.debug(`Removed device ${knownDevices[id]}`);
+          logger.info(`Removed device ${knownDevices[id]}`);
           delete knownDevices[id];
         }
       }
@@ -376,14 +376,16 @@ async function queryFirewalla() {
       devices.forEach(async (device) => {
         if (!(device.id in knownDevices)) {
           knownDevices[device.id] = device.attributes.friendly_name;
-          logger.debug(
+          logger.info(
             "Found device",
             device.attributes.friendly_name || "Unknown"
           );
         }
         await updateHA(device);
       });
-      logger.info(`${devices.length} devices`);
+      if (devices.length !== Object.keys(knownDevices).length) {
+        logger.info(`${devices.length} devices`);
+      }
     }
   } catch (error) {
     logger.error(error);

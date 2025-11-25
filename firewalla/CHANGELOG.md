@@ -1,3 +1,10 @@
+## [2.3.0] - 2025-11-25
+
+### Changed
+
+- change log levels
+- only log device count when it changes
+
 ## [2.2.0] - 2025-11-25
 
 ### Added
