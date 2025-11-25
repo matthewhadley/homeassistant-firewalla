@@ -1,3 +1,9 @@
+## [2.2.0] - 2025-11-25
+
+### Added
+
+- log adding and removing of known devices
+
 ## [2.1.1] - 2025-11-25
 
 ### Fixed

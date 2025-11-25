@@ -29,8 +29,8 @@ const SUPERVISOR_TOKEN = process.env.SUPERVISOR_TOKEN;
 const DEBUG_LOCAL = process.env.DEBUG_LOCAL === "true";
 const DEBUG_DUMP = process.env.DEBUG_DUMP === "true";
 const DEBUG = process.env.FIREWALLA_DEBUG === "true";
-
 const HA_URL = process.env.HA_URL || "http://supervisor/core";
+let knownDevices = {};
 
 const logger = function (level, ...messages) {
   let timestamp = dayjs().format("YYYY-MM-DD HH:mm:ss");
@@ -159,7 +159,7 @@ async function getHomeAssistantFirewallaNetworkDevices() {
           s.entity_id &&
           s.entity_id.startsWith("sensor.firewalla_network_device_")
       )
-      .map((s) => s.entity_id);
+      .map((s) => s.entity_id.replace(/^sensor\./, ""));
   } catch (error) {
     logger.error(
       "Error while fetching Home Assistant Firewalla network devices",
@@ -183,17 +183,9 @@ async function cleanupFirewallaDevices(keepEntityIds = []) {
         ? haEntityIds
         : haEntityIds.filter((id) => !keepSet.has(id));
 
-    if (toDelete.length) {
-      logger.info(
-        `Found ${toDelete.length} Firewalla device sensors to delete`
-      );
-    } else {
-      logger.debug("No Firewalla device sensors to delete");
-    }
-
     for (const id of toDelete) {
       const deleteResponse = await fetch(
-        `${haDeleteBaseUrl}/api/states/${encodeURIComponent(id)}`,
+        `${haDeleteBaseUrl}/api/states/sensor.${encodeURIComponent(id)}`,
         {
           method: "DELETE",
           headers: {
@@ -211,7 +203,8 @@ async function cleanupFirewallaDevices(keepEntityIds = []) {
         );
       } else {
         if (keepEntityIds.length !== 0) {
-          logger.debug(`Deleted Firewalla sensor ${id}`);
+          logger.debug(`Removed device ${knownDevices[id]}`);
+          delete knownDevices[id];
         }
       }
     }
@@ -372,10 +365,7 @@ async function queryFirewalla() {
 
     let devices = processHosts(hosts);
 
-    const keepEntityIds = devices
-      .map((d) => d.id)
-      .filter((id) => !!id)
-      .map((id) => `sensor.${id}`);
+    const keepEntityIds = devices.map((d) => d.id).filter((id) => !!id);
 
     await cleanupFirewallaDevices(keepEntityIds);
 
@@ -383,10 +373,17 @@ async function queryFirewalla() {
       console.log(JSON.stringify(devices, 0, 2));
       process.exit();
     } else {
-      logger.info(`${devices.length} devices`);
       devices.forEach(async (device) => {
+        if (!(device.id in knownDevices)) {
+          knownDevices[device.id] = device.attributes.friendly_name;
+          logger.debug(
+            "Found device",
+            device.attributes.friendly_name || "Unknown"
+          );
+        }
         await updateHA(device);
       });
+      logger.info(`${devices.length} devices`);
     }
   } catch (error) {
     logger.error(error);
