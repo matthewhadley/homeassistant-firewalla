@@ -373,8 +373,10 @@ async function queryFirewalla() {
       console.log(JSON.stringify(devices, 0, 2));
       process.exit();
     } else {
+      let foundDevice = false;
       devices.forEach(async (device) => {
         if (!(device.id in knownDevices)) {
+          fountDevice = true;
           knownDevices[device.id] = device.attributes.friendly_name;
           logger.info(
             "Found device",
@@ -383,7 +385,7 @@ async function queryFirewalla() {
         }
         await updateHA(device);
       });
-      if (devices.length !== Object.keys(knownDevices).length) {
+      if (foundDevice) {
         logger.info(`${devices.length} devices`);
       }
     }

@@ -1,3 +1,9 @@
+## [2.3.1] - 2025-11-25
+
+### Fixed
+
+- log device count properly
+
 ## [2.3.0] - 2025-11-25
 
 ### Changed
