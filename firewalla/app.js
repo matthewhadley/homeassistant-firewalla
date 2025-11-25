@@ -376,7 +376,7 @@ async function queryFirewalla() {
       let foundDevice = false;
       devices.forEach(async (device) => {
         if (!(device.id in knownDevices)) {
-          fountDevice = true;
+          foundDevice = true;
           knownDevices[device.id] = device.attributes.friendly_name;
           logger.info(
             "Found device",

@@ -1,3 +1,9 @@
+## [2.3.2] - 2025-11-25
+
+### Fixed
+
+- log device count without erroring
+
 ## [2.3.1] - 2025-11-25
 
 ### Fixed
