@@ -12,6 +12,10 @@ configuration:
     name: Private Key String
     description: >-
       Private key string
+  ha_token:
+    name: HA Long Lived Token
+    description: >-
+      Used to enable use of HA REST API to DELETE sensors no longer found in Firewalla (supervisor api does not have this method)
   interval:
     name: Interval
     description: >-

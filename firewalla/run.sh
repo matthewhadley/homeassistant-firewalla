@@ -7,6 +7,7 @@ FIREWALLA_VERSION=$(cat VERSION)
 FIREWALLA_IP="$(bashio::config 'firewalla_ip')"
 FIREWALLA_PUBLIC_KEY_STRING="$(bashio::config 'public_key_string')"
 FIREWALLA_PRIVATE_KEY_STRING="$(bashio::config 'private_key_string')"
+FIREWALLA_HA_TOKEN="$(bashio::config 'ha_token')"
 FIREWALLA_INTERVAL="$(bashio::config 'interval')"
 FIREWALLA_DEBUG="$(bashio::config 'debug')"
 
@@ -14,6 +15,7 @@ export FIREWALLA_VERSION
 export FIREWALLA_IP
 export FIREWALLA_PUBLIC_KEY_STRING
 export FIREWALLA_PRIVATE_KEY_STRING
+export FIREWALLA_HA_TOKEN
 export FIREWALLA_INTERVAL
 export FIREWALLA_DEBUG
 

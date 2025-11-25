@@ -1,3 +1,9 @@
+## [2.1.0] - 2025-11-25
+
+### Fixed
+
+- homeassistant supervisor API does not allow for DELETES, use rest API
+
 ## [2.0.0] - 2025-11-24
 
 ### Changed

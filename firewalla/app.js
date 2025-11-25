@@ -22,6 +22,7 @@ const FIREWALLA_PRIVATE_KEY_STRING = (
   /(?<=-----BEGIN PRIVATE KEY-----)([\s\S]*?)(?=-----END PRIVATE KEY-----)/,
   (match) => match.replace(/\s+/g, "\n")
 );
+const HA_TOKEN = process.env.HA_TOKEN;
 const FIREWALLA_INTERVAL =
   (parseInt(process.env.FIREWALLA_INTERVAL) || 60) * 1000;
 const SUPERVISOR_TOKEN = process.env.SUPERVISOR_TOKEN;
@@ -67,6 +68,68 @@ logger.debug = function (...messages) {
 if (!DEBUG_DUMP) {
   logger.info(`Firewalla ${FIREWALLA_VERSION}`);
 }
+
+let haDeleteBaseUrl;
+/**
+ * Determine the correct Home Assistant Core base URL to use for DELETE calls.
+ * As supervisor API does not have a DELETE method for sensors
+ *
+ * Preference order:
+ * 1. If HA_URL is set and is not the supervisor core proxy, use that.
+ * 2. Ask the Supervisor for Home Assistant info (ip_address, port) and build a URL.
+ * 3. Fall back to http://homeassistant:8123
+ */
+async function getHaDeleteBaseUrl() {
+  // If HA_URL is explicitly set to a non-supervisor URL, use that directly.
+  if (process.env.HA_URL && !process.env.HA_URL.includes("supervisor/core")) {
+    haDeleteBaseUrl = process.env.HA_URL;
+    logger.debug(`Using configured HA_URL for deletes: ${haDeleteBaseUrl}`);
+    return haDeleteBaseUrl;
+  }
+
+  // Try to discover Core location via Supervisor API
+  try {
+    const infoResponse = await fetch("http://supervisor/homeassistant/info", {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${SUPERVISOR_TOKEN}`,
+        "Content-Type": "application/json",
+      },
+    });
+
+    if (infoResponse.ok) {
+      const info = await infoResponse.json();
+      const data = info.data || {};
+      const ip = data.ip_address || "homeassistant";
+      const port = data.port || 8123;
+      haDeleteBaseUrl = `http://${ip}:${port}`;
+      logger.debug(
+        `Using Home Assistant Core URL for deletes from supervisor info: ${haDeleteBaseUrl}`
+      );
+      return haDeleteBaseUrl;
+    } else {
+      logger.warn(
+        "Failed to fetch Home Assistant info from supervisor",
+        infoResponse.status,
+        infoResponse.statusText
+      );
+    }
+  } catch (error) {
+    logger.warn(
+      "Error while fetching Home Assistant info from supervisor",
+      error
+    );
+  }
+
+  // Fallback if supervisor-based discovery fails
+  haDeleteBaseUrl = "http://homeassistant:8123";
+  logger.info(
+    `Falling back to default Home Assistant Core URL for deletes: ${haDeleteBaseUrl}`
+  );
+  return haDeleteBaseUrl;
+}
+
+haDeleteBaseUrl = await getHaDeleteBaseUrl();
 
 // Return an array of entity_ids for all sensor.firewalla_network_device_* in Home Assistant
 async function getHomeAssistantFirewallaNetworkDevices() {
@@ -130,11 +193,11 @@ async function cleanupFirewallaDevices(keepEntityIds = []) {
 
     for (const id of toDelete) {
       const deleteResponse = await fetch(
-        `${HA_URL}/api/states/${encodeURIComponent(id)}`,
+        `${haDeleteBaseUrl}/api/states/${encodeURIComponent(id)}`,
         {
           method: "DELETE",
           headers: {
-            Authorization: `Bearer ${SUPERVISOR_TOKEN}`,
+            Authorization: `Bearer ${HA_TOKEN}`,
             "Content-Type": "application/json",
           },
         }
@@ -147,7 +210,9 @@ async function cleanupFirewallaDevices(keepEntityIds = []) {
           deleteResponse.statusText
         );
       } else {
-        logger.debug(`Deleted Firewalla sensor ${id}`);
+        if (keepEntityIds.length !== 0) {
+          logger.debug(`Deleted Firewalla sensor ${id}`);
+        }
       }
     }
   } catch (error) {
@@ -328,7 +393,6 @@ async function queryFirewalla() {
   }
 }
 
-await cleanupFirewallaDevices();
 await queryFirewalla();
 setInterval(async function () {
   await queryFirewalla();
