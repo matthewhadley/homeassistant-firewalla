@@ -22,7 +22,7 @@ const FIREWALLA_PRIVATE_KEY_STRING = (
   /(?<=-----BEGIN PRIVATE KEY-----)([\s\S]*?)(?=-----END PRIVATE KEY-----)/,
   (match) => match.replace(/\s+/g, "\n")
 );
-const HA_TOKEN = process.env.HA_TOKEN;
+const HA_TOKEN = process.env.HA_TOKEN || process.env.FIREWALLA_HA_TOKEN;
 const FIREWALLA_INTERVAL =
   (parseInt(process.env.FIREWALLA_INTERVAL) || 60) * 1000;
 const SUPERVISOR_TOKEN = process.env.SUPERVISOR_TOKEN;
