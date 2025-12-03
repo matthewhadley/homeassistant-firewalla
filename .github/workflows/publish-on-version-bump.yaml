@@ -1,4 +1,4 @@
-name: Publish
+name: Publish On Version Bump
 on: push
 
 jobs:
@@ -11,10 +11,16 @@ jobs:
         with:
           fetch-depth: 2
       - name: Check Version Bump
-        id: check_version_bumb
+        id: check_version_bump
         run: |
-          c=$(grep version < firewalla/config.yaml | grep -o '[0-9\.]*');
-          p=$(git show HEAD~1:firewalla/config.yaml | grep version | grep -o '[0-9\.]*');
+          target=$(find . -type f -name "config.yaml" -exec dirname {} \; | awk -F'/' '{print $NF}')
+          c=$(grep version < ${target}/config.yaml | grep -o '[0-9\.]*');
+          p=$(git show HEAD~1:${target}/config.yaml 2> /dev/null)
+          if [ $? -eq 128 ]; then
+            p=0
+          else
+            p=$(echo "$p" | grep version | grep -o '[0-9\.]*');
+          fi;
           echo "Current version: $c"
           echo " Commit version: $p"
           if [[ ! -z "$c" && "$c" != "$p" ]]; then
@@ -34,6 +40,6 @@ jobs:
         uses: home-assistant/builder@master
         with:
           args: |
-            --all \
-            --target firewalla \
-            --docker-hub matthewhadley
+            --amd64 --aarch64 --armhf --armv7 \
+            --target $(find . -type f -name "Dockerfile" -exec dirname {} \; | awk -F'/' '{print $NF}') \
+            --docker-hub ${{ secrets.DOCKERHUB_USERNAME }}
