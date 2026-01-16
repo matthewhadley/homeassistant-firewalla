@@ -5,7 +5,7 @@ docker run \
     --privileged \
     -v "$(pwd)":/data \
     homeassistant/aarch64-builder \
-    --amd64 --aarch64 --armhf --armv7 \
+    --amd64 --aarch64 \
     --target firewalla \
     --docker-user $DOCKER_USER \
     --docker-password $DOCKER_PASSWORD
