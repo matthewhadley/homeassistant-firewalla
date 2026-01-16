@@ -216,16 +216,17 @@ function processHosts(data) {
   return data.hosts
     .map((host) => {
       // Extract and transform properties
-      const ip =
+      const ipRaw =
         host.ip ||
         (host.policy?.ipAllocation?.allocations
           ? Object.values(host.policy.ipAllocation.allocations)[0]?.ipv4
           : null) ||
         null;
+      const ip = ipRaw || "-";
       const MAC = host.mac || null;
       const vendor = host.macVendor || null;
       const name = host.name || host.dhcpName || host.localDomain || null;
-      if (!ip && !name) {
+      if (!ipRaw && !name) {
         return null;
       }
 
@@ -269,7 +270,7 @@ function processHosts(data) {
     .sort((a, b) => {
       // Sort by IP address numerically
       const parseIP = (ip) =>
-        typeof ip === "string"
+        typeof ip === "string" && ip !== "-"
           ? ip.split(".").map((num) => parseInt(num, 10))
           : null;
       const ipA = parseIP(a.attributes.ip);

@@ -1,3 +1,9 @@
+## [2.6.0] - 2026-01-16
+
+### Fixed
+
+- handle missing ip address
+
 ## [2.5.0] - 2026-01-16
 
 ### Fixed
