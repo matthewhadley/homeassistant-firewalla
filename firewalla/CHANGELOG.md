@@ -1,3 +1,9 @@
+## [2.4.0] - 2026-01-16
+
+### Added
+
+- remove devices with no names or ip address
+
 ## [2.3.2] - 2025-11-25
 
 ### Fixed

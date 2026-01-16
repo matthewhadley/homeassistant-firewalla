@@ -22,12 +22,11 @@ const FIREWALLA_PRIVATE_KEY_STRING = (
   /(?<=-----BEGIN PRIVATE KEY-----)([\s\S]*?)(?=-----END PRIVATE KEY-----)/,
   (match) => match.replace(/\s+/g, "\n")
 );
+// Cannot use supervisor token as it does not allow for deletes
 const HA_TOKEN = process.env.HA_TOKEN || process.env.FIREWALLA_HA_TOKEN;
 const FIREWALLA_INTERVAL =
   (parseInt(process.env.FIREWALLA_INTERVAL) || 60) * 1000;
-const SUPERVISOR_TOKEN = process.env.SUPERVISOR_TOKEN;
 const DEBUG_LOCAL = process.env.DEBUG_LOCAL === "true";
-const DEBUG_DUMP = process.env.DEBUG_DUMP === "true";
 const DEBUG = process.env.FIREWALLA_DEBUG === "true";
 const HA_URL = process.env.HA_URL || "http://supervisor/core";
 let knownDevices = {};
@@ -65,7 +64,7 @@ logger.debug = function (...messages) {
   }
 };
 
-if (!DEBUG_DUMP) {
+if (!DEBUG_LOCAL) {
   logger.info(`Firewalla ${FIREWALLA_VERSION}`);
 }
 
@@ -92,7 +91,7 @@ async function getHaDeleteBaseUrl() {
     const infoResponse = await fetch("http://supervisor/homeassistant/info", {
       method: "GET",
       headers: {
-        Authorization: `Bearer ${SUPERVISOR_TOKEN}`,
+        Authorization: `Bearer ${HA_TOKEN}`,
         "Content-Type": "application/json",
       },
     });
@@ -137,11 +136,10 @@ async function getHomeAssistantFirewallaNetworkDevices() {
     const response = await fetch(`${HA_URL}/api/states`, {
       method: "GET",
       headers: {
-        Authorization: `Bearer ${SUPERVISOR_TOKEN}`,
+        Authorization: `Bearer ${HA_TOKEN}`,
         "Content-Type": "application/json",
       },
     });
-
     if (!response.ok) {
       logger.warn(
         "Failed to fetch Home Assistant states for Firewalla devices",
@@ -214,6 +212,7 @@ async function cleanupFirewallaDevices(keepEntityIds = []) {
 }
 
 function processHosts(data) {
+  // console.log(JSON.stringify(data, 0, 2));
   return data.hosts
     .map((host) => {
       // Extract and transform properties
@@ -222,10 +221,13 @@ function processHosts(data) {
         (host.policy?.ipAllocation?.allocations
           ? Object.values(host.policy.ipAllocation.allocations)[0]?.ipv4
           : null) ||
-        "-";
+        null;
       const MAC = host.mac || null;
       const vendor = host.macVendor || null;
       const name = host.name || host.dhcpName || host.localDomain || null;
+      if (!ip && !name) {
+        return null;
+      }
 
       // Generate id from MAC address
       const id = MAC
@@ -263,11 +265,25 @@ function processHosts(data) {
         },
       };
     })
+    .filter(Boolean)
     .sort((a, b) => {
       // Sort by IP address numerically
-      const parseIP = (ip) => ip.split(".").map((num) => parseInt(num, 10));
+      const parseIP = (ip) =>
+        typeof ip === "string"
+          ? ip.split(".").map((num) => parseInt(num, 10))
+          : null;
       const ipA = parseIP(a.attributes.ip);
       const ipB = parseIP(b.attributes.ip);
+
+      if (!ipA && !ipB) {
+        return 0;
+      }
+      if (!ipA) {
+        return 1;
+      }
+      if (!ipB) {
+        return -1;
+      }
 
       for (let i = 0; i < 4; i++) {
         if (ipA[i] !== ipB[i]) {
@@ -284,7 +300,7 @@ async function updateHA(data) {
       method: "POST",
       body: JSON.stringify(data),
       headers: {
-        Authorization: `Bearer ${SUPERVISOR_TOKEN}`,
+        Authorization: `Bearer ${HA_TOKEN}`,
         "Content-Type": "application/json",
       },
     });
@@ -366,10 +382,9 @@ async function queryFirewalla() {
     let devices = processHosts(hosts);
 
     const keepEntityIds = devices.map((d) => d.id).filter((id) => !!id);
-
     await cleanupFirewallaDevices(keepEntityIds);
 
-    if (DEBUG_DUMP) {
+    if (DEBUG_LOCAL) {
       console.log(JSON.stringify(devices, 0, 2));
       process.exit();
     } else {
