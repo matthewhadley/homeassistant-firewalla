@@ -22,10 +22,10 @@ const FIREWALLA_PRIVATE_KEY_STRING = (
   /(?<=-----BEGIN PRIVATE KEY-----)([\s\S]*?)(?=-----END PRIVATE KEY-----)/,
   (match) => match.replace(/\s+/g, "\n")
 );
-// Cannot use supervisor token as it does not allow for deletes
 const HA_TOKEN = process.env.HA_TOKEN || process.env.FIREWALLA_HA_TOKEN;
 const FIREWALLA_INTERVAL =
   (parseInt(process.env.FIREWALLA_INTERVAL) || 60) * 1000;
+const SUPERVISOR_TOKEN = process.env.SUPERVISOR_TOKEN;
 const DEBUG_LOCAL = process.env.DEBUG_LOCAL === "true";
 const DEBUG = process.env.FIREWALLA_DEBUG === "true";
 const HA_URL = process.env.HA_URL || "http://supervisor/core";
@@ -91,7 +91,7 @@ async function getHaDeleteBaseUrl() {
     const infoResponse = await fetch("http://supervisor/homeassistant/info", {
       method: "GET",
       headers: {
-        Authorization: `Bearer ${HA_TOKEN}`,
+        Authorization: `Bearer ${SUPERVISOR_TOKEN}`,
         "Content-Type": "application/json",
       },
     });
@@ -136,7 +136,7 @@ async function getHomeAssistantFirewallaNetworkDevices() {
     const response = await fetch(`${HA_URL}/api/states`, {
       method: "GET",
       headers: {
-        Authorization: `Bearer ${HA_TOKEN}`,
+        Authorization: `Bearer ${SUPERVISOR_TOKEN}`,
         "Content-Type": "application/json",
       },
     });
@@ -225,7 +225,7 @@ function processHosts(data) {
       const MAC = host.mac || null;
       const vendor = host.macVendor || null;
       const name = host.name || host.dhcpName || host.localDomain || null;
-      if (!ip && !name) {
+      if (!ip || !name) {
         return null;
       }
 
@@ -268,22 +268,9 @@ function processHosts(data) {
     .filter(Boolean)
     .sort((a, b) => {
       // Sort by IP address numerically
-      const parseIP = (ip) =>
-        typeof ip === "string"
-          ? ip.split(".").map((num) => parseInt(num, 10))
-          : null;
+      const parseIP = (ip) => ip.split(".").map((num) => parseInt(num, 10));
       const ipA = parseIP(a.attributes.ip);
       const ipB = parseIP(b.attributes.ip);
-
-      if (!ipA && !ipB) {
-        return 0;
-      }
-      if (!ipA) {
-        return 1;
-      }
-      if (!ipB) {
-        return -1;
-      }
 
       for (let i = 0; i < 4; i++) {
         if (ipA[i] !== ipB[i]) {
@@ -300,7 +287,7 @@ async function updateHA(data) {
       method: "POST",
       body: JSON.stringify(data),
       headers: {
-        Authorization: `Bearer ${HA_TOKEN}`,
+        Authorization: `Bearer ${SUPERVISOR_TOKEN}`,
         "Content-Type": "application/json",
       },
     });

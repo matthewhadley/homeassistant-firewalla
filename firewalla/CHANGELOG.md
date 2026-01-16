@@ -1,3 +1,9 @@
+## [2.4.1] - 2026-01-16
+
+### Fixed
+
+- keep/use supervisor token for HA calls
+
 ## [2.4.0] - 2026-01-16
 
 ### Added
