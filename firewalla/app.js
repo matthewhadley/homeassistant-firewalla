@@ -225,7 +225,7 @@ function processHosts(data) {
       const MAC = host.mac || null;
       const vendor = host.macVendor || null;
       const name = host.name || host.dhcpName || host.localDomain || null;
-      if (!ip || !name) {
+      if (!ip && !name) {
         return null;
       }
 
@@ -268,9 +268,22 @@ function processHosts(data) {
     .filter(Boolean)
     .sort((a, b) => {
       // Sort by IP address numerically
-      const parseIP = (ip) => ip.split(".").map((num) => parseInt(num, 10));
+      const parseIP = (ip) =>
+        typeof ip === "string"
+          ? ip.split(".").map((num) => parseInt(num, 10))
+          : null;
       const ipA = parseIP(a.attributes.ip);
       const ipB = parseIP(b.attributes.ip);
+
+      if (!ipA && !ipB) {
+        return 0;
+      }
+      if (!ipA) {
+        return 1;
+      }
+      if (!ipB) {
+        return -1;
+      }
 
       for (let i = 0; i < 4; i++) {
         if (ipA[i] !== ipB[i]) {
