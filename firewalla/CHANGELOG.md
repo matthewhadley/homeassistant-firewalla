@@ -1,3 +1,9 @@
+## [2.5.0] - 2026-01-16
+
+### Fixed
+
+- only remove devices with no name and no ip address
+
 ## [2.4.1] - 2026-01-16
 
 ### Fixed
