@@ -124,7 +124,7 @@ function getStaInfo(host, accessPointNameByBssid = {}) {
     ssid: staInfo.ssid || staInfo.SSID || "-",
     rssi: staInfo.rssi ?? staInfo.RSSI ?? "-",
     bssid: bssid || "-",
-    access_point: accessPointNameByBssid[bssid] || "-",
+    ap: accessPointNameByBssid[bssid] || "-",
   };
 }
 
@@ -287,7 +287,7 @@ function processHosts(data) {
       const MAC = host.mac || null;
       const vendor = host.macVendor || null;
       const name = host.name || host.dhcpName || host.localDomain || null;
-      const { ssid, rssi, bssid, access_point } = getStaInfo(
+      const { ssid, rssi, bssid, ap } = getStaInfo(
         host,
         accessPointNameByBssid,
       );
@@ -331,7 +331,7 @@ function processHosts(data) {
           ssid,
           rssi,
           bssid,
-          access_point,
+          ap,
         },
       };
     })
