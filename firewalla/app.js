@@ -14,13 +14,13 @@ const FIREWALLA_PUBLIC_KEY_STRING = (
   process.env.FIREWALLA_PUBLIC_KEY_STRING || ""
 ).replace(
   /(?<=-----BEGIN PUBLIC KEY-----)([\s\S]*?)(?=-----END PUBLIC KEY-----)/,
-  (match) => match.replace(/\s+/g, "\n")
+  (match) => match.replace(/\s+/g, "\n"),
 );
 const FIREWALLA_PRIVATE_KEY_STRING = (
   process.env.FIREWALLA_PRIVATE_KEY_STRING || ""
 ).replace(
   /(?<=-----BEGIN PRIVATE KEY-----)([\s\S]*?)(?=-----END PRIVATE KEY-----)/,
-  (match) => match.replace(/\s+/g, "\n")
+  (match) => match.replace(/\s+/g, "\n"),
 );
 const HA_TOKEN = process.env.HA_TOKEN || process.env.FIREWALLA_HA_TOKEN;
 const FIREWALLA_INTERVAL =
@@ -69,6 +69,65 @@ if (!DEBUG_LOCAL) {
 }
 
 let haDeleteBaseUrl;
+
+function normalizeMac(mac) {
+  return typeof mac === "string" ? mac.toUpperCase() : null;
+}
+
+function formatMac(bytes) {
+  return bytes
+    .map((byte) => byte.toString(16).padStart(2, "0").toUpperCase())
+    .join(":");
+}
+
+function getAccessPointName(host) {
+  return host.name || host.bname || host.dhcpName || host.localDomain || null;
+}
+
+function buildAccessPointNameByBssid(hosts) {
+  return hosts.reduce((accessPoints, host) => {
+    if (host.macVendor !== "FIREWALLA INC" || host.staInfo) {
+      return accessPoints;
+    }
+
+    const name = getAccessPointName(host);
+    const mac = normalizeMac(host.mac);
+    if (!name || !mac) {
+      return accessPoints;
+    }
+
+    const bytes = mac.split(":").map((byte) => parseInt(byte, 16));
+    if (bytes.length !== 6 || bytes.some((byte) => Number.isNaN(byte))) {
+      return accessPoints;
+    }
+
+    [2, 3, 4].forEach((offset) => {
+      const candidate = [...bytes];
+      candidate[5] = (candidate[5] + offset) & 0xff;
+      accessPoints[formatMac(candidate)] = name;
+    });
+
+    const localAdminCandidate = [...bytes];
+    localAdminCandidate[0] = localAdminCandidate[0] ^ 0x06;
+    localAdminCandidate[5] = (localAdminCandidate[5] + 4) & 0xff;
+    accessPoints[formatMac(localAdminCandidate)] = name;
+
+    return accessPoints;
+  }, {});
+}
+
+function getStaInfo(host, accessPointNameByBssid = {}) {
+  const staInfo = host.StaInfo || host.staInfo || host.stainfo || {};
+  const bssid = normalizeMac(staInfo.bssid || staInfo.BSSID);
+
+  return {
+    ssid: staInfo.ssid || staInfo.SSID || "-",
+    rssi: staInfo.rssi ?? staInfo.RSSI ?? "-",
+    bssid: bssid || "-",
+    access_point: accessPointNameByBssid[bssid] || "-",
+  };
+}
+
 /**
  * Determine the correct Home Assistant Core base URL to use for DELETE calls.
  * As supervisor API does not have a DELETE method for sensors
@@ -103,27 +162,27 @@ async function getHaDeleteBaseUrl() {
       const port = data.port || 8123;
       haDeleteBaseUrl = `http://${ip}:${port}`;
       logger.debug(
-        `Using Home Assistant Core URL for deletes from supervisor info: ${haDeleteBaseUrl}`
+        `Using Home Assistant Core URL for deletes from supervisor info: ${haDeleteBaseUrl}`,
       );
       return haDeleteBaseUrl;
     } else {
       logger.warn(
         "Failed to fetch Home Assistant info from supervisor",
         infoResponse.status,
-        infoResponse.statusText
+        infoResponse.statusText,
       );
     }
   } catch (error) {
     logger.warn(
       "Error while fetching Home Assistant info from supervisor",
-      error
+      error,
     );
   }
 
   // Fallback if supervisor-based discovery fails
   haDeleteBaseUrl = "http://homeassistant:8123";
   logger.info(
-    `Falling back to default Home Assistant Core URL for deletes: ${haDeleteBaseUrl}`
+    `Falling back to default Home Assistant Core URL for deletes: ${haDeleteBaseUrl}`,
   );
   return haDeleteBaseUrl;
 }
@@ -144,7 +203,7 @@ async function getHomeAssistantFirewallaNetworkDevices() {
       logger.warn(
         "Failed to fetch Home Assistant states for Firewalla devices",
         response.status,
-        response.statusText
+        response.statusText,
       );
       return [];
     }
@@ -155,13 +214,13 @@ async function getHomeAssistantFirewallaNetworkDevices() {
       .filter(
         (s) =>
           s.entity_id &&
-          s.entity_id.startsWith("sensor.firewalla_network_device_")
+          s.entity_id.startsWith("sensor.firewalla_network_device_"),
       )
       .map((s) => s.entity_id.replace(/^sensor\./, ""));
   } catch (error) {
     logger.error(
       "Error while fetching Home Assistant Firewalla network devices",
-      error
+      error,
     );
     return [];
   }
@@ -190,14 +249,14 @@ async function cleanupFirewallaDevices(keepEntityIds = []) {
             Authorization: `Bearer ${HA_TOKEN}`,
             "Content-Type": "application/json",
           },
-        }
+        },
       );
 
       if (!deleteResponse.ok) {
         logger.warn(
           `Failed to delete Firewalla sensor ${id}`,
           deleteResponse.status,
-          deleteResponse.statusText
+          deleteResponse.statusText,
         );
       } else {
         if (keepEntityIds.length !== 0) {
@@ -213,6 +272,8 @@ async function cleanupFirewallaDevices(keepEntityIds = []) {
 
 function processHosts(data) {
   // console.log(JSON.stringify(data, 0, 2));
+  const accessPointNameByBssid = buildAccessPointNameByBssid(data.hosts);
+
   return data.hosts
     .map((host) => {
       // Extract and transform properties
@@ -226,6 +287,10 @@ function processHosts(data) {
       const MAC = host.mac || null;
       const vendor = host.macVendor || null;
       const name = host.name || host.dhcpName || host.localDomain || null;
+      const { ssid, rssi, bssid, access_point } = getStaInfo(
+        host,
+        accessPointNameByBssid,
+      );
       if (!ipRaw && !name) {
         return null;
       }
@@ -238,11 +303,11 @@ function processHosts(data) {
 
       // Extract lastActive and firstFound, flooring the values
       const state = dayjs(Math.floor(host.lastActive) * 1000).format(
-        "YYYY-MM-DDTHH:mm:ss"
+        "YYYY-MM-DDTHH:mm:ss",
       );
 
       const found = dayjs(Math.floor(host.firstFound) * 1000).format(
-        "YYYY-MM-DDTHH:mm:ss"
+        "YYYY-MM-DDTHH:mm:ss",
       );
 
       // Extract ipAllocationType
@@ -263,6 +328,10 @@ function processHosts(data) {
           vendor,
           found,
           DHCP,
+          ssid,
+          rssi,
+          bssid,
+          access_point,
         },
       };
     })
@@ -319,7 +388,7 @@ async function queryFirewalla() {
     } else {
       SecureUtil.importKeyPairFromString(
         FIREWALLA_PUBLIC_KEY_STRING,
-        FIREWALLA_PRIVATE_KEY_STRING
+        FIREWALLA_PRIVATE_KEY_STRING,
       );
     }
 
@@ -331,19 +400,19 @@ async function queryFirewalla() {
 
     try {
       let speedTestTimestamp = dayjs(
-        Math.floor(speedTest.results[0].timestamp) * 1000
+        Math.floor(speedTest.results[0].timestamp) * 1000,
       ).format("YYYY-MM-DDTHH:mm:ss");
       if (speedTestTimestampLast !== speedTestTimestamp) {
         speedTestTimestampLast = speedTestTimestamp;
         let speedTestUpload = parseFloat(
-          speedTest.results[0].result.upload.toFixed(2)
+          speedTest.results[0].result.upload.toFixed(2),
         );
         let speedTestDownload = parseFloat(
-          speedTest.results[0].result.download.toFixed(2)
+          speedTest.results[0].result.download.toFixed(2),
         );
 
         logger.info(
-          `speedTest ${speedTestUpload} Mbit/s up, ${speedTestDownload} Mbit/s down (timestamp ${speedTestTimestamp})`
+          `speedTest ${speedTestUpload} Mbit/s up, ${speedTestDownload} Mbit/s down (timestamp ${speedTestTimestamp})`,
         );
 
         await updateHA({
@@ -396,7 +465,7 @@ async function queryFirewalla() {
           knownDevices[device.id] = device.attributes.friendly_name;
           logger.info(
             "Found device",
-            device.attributes.friendly_name || "Unknown"
+            device.attributes.friendly_name || "Unknown",
           );
         }
         await updateHA(device);

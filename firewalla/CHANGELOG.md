@@ -1,3 +1,9 @@
+## [3.0.0] - 2026-07-11
+
+### Added
+
+- add device Wifi information
+
 ## [2.6.0] - 2026-01-16
 
 ### Fixed
