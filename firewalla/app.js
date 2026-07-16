@@ -295,10 +295,9 @@ function processHosts(data) {
         return null;
       }
 
-      // Generate id from MAC address
+      // Generate id from full MAC address
       const id = MAC
-        ? "firewalla_network_device_" +
-          MAC.replace(/:/g, "").toLowerCase().slice(-6)
+        ? "firewalla_network_device_" + MAC.replace(/:/g, "").toLowerCase()
         : null;
 
       // Extract lastActive and firstFound, flooring the values

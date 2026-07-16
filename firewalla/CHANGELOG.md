@@ -1,3 +1,9 @@
+## [4.0.0] - 2026-07-16
+
+### Changed
+
+- use full mac address in HA entity name
+
 ## [3.1.0] - 2026-07-11
 
 ### Changed
