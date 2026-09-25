@@ -1,2 +1,10 @@
+# Firewalla box credentials and captured device data
 *.pem
+*.key
 debug.json
+.env
+
+node_modules/
+
+.DS_Store
+.vscode/
