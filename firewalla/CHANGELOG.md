@@ -1,3 +1,10 @@
+## [4.1.0] - 2026-09-25
+
+### Fixed
+
+- use the rotated encryption key after a Firewalla box rekey
+- log which Firewalla call failed and why, instead of `{}`
+
 ## [4.0.0] - 2026-07-16
 
 ### Changed

@@ -31,20 +31,26 @@ const DEBUG = process.env.FIREWALLA_DEBUG === "true";
 const HA_URL = process.env.HA_URL || "http://supervisor/core";
 let knownDevices = {};
 
+function formatMessage(message) {
+  if (message instanceof Error) {
+    let formatted = message.stack
+      .replace(/^Error: /, "")
+      .replaceAll("\n    ", " ");
+    if (message.cause !== undefined) {
+      formatted += ` Caused by: ${formatMessage(message.cause)}`;
+    }
+    return formatted;
+  } else if (typeof message === "object") {
+    return JSON.stringify(message);
+  } else {
+    return message;
+  }
+}
+
 const logger = function (level, ...messages) {
   let timestamp = dayjs().format("YYYY-MM-DD HH:mm:ss");
 
-  let combinedMessage = messages
-    .map((message) => {
-      if (message instanceof Error) {
-        return message.stack.replace("Error: ", "").replaceAll("\n    ", " ");
-      } else if (typeof message === "object") {
-        return JSON.stringify(message);
-      } else {
-        return message;
-      }
-    })
-    .join(" ");
+  let combinedMessage = messages.map(formatMessage).join(" ");
 
   console.log(`[${timestamp}] ${level}: ${combinedMessage}`);
 };
@@ -380,6 +386,31 @@ async function updateHA(data) {
 
 let speedTestTimestampLast;
 
+// node-firewalla throws whatever the box or cloud returned, often a bare
+// object that logs as {}, so wrap it in an Error naming the call that failed.
+async function firewallaCall(description, fn) {
+  try {
+    return await fn();
+  } catch (error) {
+    let detail;
+    if (error instanceof Error) {
+      detail = error.message;
+    } else if (
+      error &&
+      typeof error === "object" &&
+      Object.keys(error).length === 0
+    ) {
+      detail =
+        "box rejected the request without details (usually it could not decrypt it, e.g. a key mismatch)";
+    } else {
+      detail = typeof error === "string" ? error : JSON.stringify(error);
+    }
+    throw new Error(`Firewalla ${description} failed: ${detail}`, {
+      cause: error,
+    });
+  }
+}
+
 async function queryFirewalla() {
   try {
     if (DEBUG_LOCAL) {
@@ -391,11 +422,28 @@ async function queryFirewalla() {
       );
     }
 
-    let { groups } = await FWGroupApi.login();
+    const loginResponse = await firewallaCall("login", () =>
+      FWGroupApi.login(),
+    );
+    const groups = loginResponse?.groups;
+    if (!groups?.length) {
+      throw new Error(
+        `Firewalla login returned no groups: ${JSON.stringify({ ...loginResponse, access_token: undefined })}`,
+      );
+    }
     let fwGroup = FWGroup.fromJson(groups[0], FIREWALLA_IP);
 
+    // Boxes with the "rekey" feature rotate the group key and only accept
+    // messages encrypted with the rotated key, which node-firewalla ignores.
+    const rkey = groups[0].symmetricKeys[0].rkey;
+    if (rkey) {
+      fwGroup.symmetricKeyPlain = SecureUtil.rsaDecrypt(JSON.parse(rkey).key);
+    }
+
     let networkService = new NetworkService(fwGroup);
-    let speedTest = await networkService.getSpeedtestResults();
+    let speedTest = await firewallaCall("speedtest request", () =>
+      networkService.getSpeedtestResults(),
+    );
 
     try {
       let speedTestTimestamp = dayjs(
@@ -446,7 +494,9 @@ async function queryFirewalla() {
 
     // List all hosts connected to your firewalla
     let hostService = new HostService(fwGroup);
-    let hosts = await hostService.getAll();
+    let hosts = await firewallaCall("hosts request", () =>
+      hostService.getAll(),
+    );
 
     let devices = processHosts(hosts);
 
