@@ -86,7 +86,7 @@ function formatMac(bytes) {
     .join(":");
 }
 
-function getAccessPointName(host) {
+function getHostName(host) {
   return host.name || host.bname || host.dhcpName || host.localDomain || null;
 }
 
@@ -96,7 +96,7 @@ function buildAccessPointNameByBssid(hosts) {
       return accessPoints;
     }
 
-    const name = getAccessPointName(host);
+    const name = getHostName(host);
     const mac = normalizeMac(host.mac);
     if (!name || !mac) {
       return accessPoints;
@@ -292,7 +292,7 @@ function processHosts(data) {
       const ip = ipRaw || "-";
       const MAC = host.mac || null;
       const vendor = host.macVendor || null;
-      const name = host.name || host.dhcpName || host.localDomain || null;
+      const name = getHostName(host);
       const { ssid, rssi, bssid, ap } = getStaInfo(
         host,
         accessPointNameByBssid,
