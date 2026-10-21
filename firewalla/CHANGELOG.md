@@ -1,3 +1,9 @@
+## [4.2.0] - 2026-10-21
+
+### Changed
+
+- name devices by their Bonjour name, as the Firewalla app does, before their DHCP hostname
+
 ## [4.1.0] - 2026-09-25
 
 ### Fixed
