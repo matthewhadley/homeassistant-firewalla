@@ -371,6 +371,7 @@ function processHosts(data) {
     });
 }
 
+// Returns null once the sensor is updated, otherwise why it wasn't.
 async function updateHA(data) {
   try {
     const response = await fetch(`${HA_URL}/api/states/sensor.${data.id}`, {
@@ -381,9 +382,27 @@ async function updateHA(data) {
         "Content-Type": "application/json",
       },
     });
+    return response.ok
+      ? null
+      : `HTTP ${response.status} ${response.statusText}`;
   } catch (error) {
-    console.log(error);
+    // The code (ECONNREFUSED) rather than the message, which names each
+    // sensor's URL and so would not collapse into one reason below.
+    return error.code || error.message;
   }
+}
+
+// Update all the sensors and log any failures as one line, since Home
+// Assistant being unreachable fails every one of them the same way. Returns
+// whether all of them were updated.
+async function updateSensors(sensors) {
+  const failures = (await Promise.all(sensors.map(updateHA))).filter(Boolean);
+  if (failures.length) {
+    logger.error(
+      `Failed to update ${failures.length} of ${sensors.length} sensors in Home Assistant: ${[...new Set(failures)].join(", ")}`,
+    );
+  }
+  return failures.length === 0;
 }
 
 let speedTestTimestampLast;
@@ -541,31 +560,38 @@ async function pollFirewalla(fwGroup) {
         `speedTest ${speedTestUpload} Mbit/s up, ${speedTestDownload} Mbit/s down (timestamp ${speedTestTimestamp})`,
       );
 
-      await updateHA({
-        id: "speedtest_upload",
-        state: speedTestUpload,
-        attributes: {
-          icon: "mdi:speedometer",
-          device_class: "data_rate",
-          state_class: "measurement",
-          friendly_name: "SpeedTest Upload",
-          unit_of_measurement: "Mbit/s",
-          timestamp: speedTestTimestamp,
+      const updated = await updateSensors([
+        {
+          id: "speedtest_upload",
+          state: speedTestUpload,
+          attributes: {
+            icon: "mdi:speedometer",
+            device_class: "data_rate",
+            state_class: "measurement",
+            friendly_name: "SpeedTest Upload",
+            unit_of_measurement: "Mbit/s",
+            timestamp: speedTestTimestamp,
+          },
         },
-      });
+        {
+          id: "speedtest_download",
+          state: speedTestDownload,
+          attributes: {
+            icon: "mdi:speedometer",
+            device_class: "data_rate",
+            state_class: "measurement",
+            friendly_name: "SpeedTest Download",
+            unit_of_measurement: "Mbit/s",
+            timestamp: speedTestTimestamp,
+          },
+        },
+      ]);
 
-      await updateHA({
-        id: "speedtest_download",
-        state: speedTestDownload,
-        attributes: {
-          icon: "mdi:speedometer",
-          device_class: "data_rate",
-          state_class: "measurement",
-          friendly_name: "SpeedTest Download",
-          unit_of_measurement: "Mbit/s",
-          timestamp: speedTestTimestamp,
-        },
-      });
+      // Send the same result again next poll rather than leaving the sensors
+      // stale until the next speedtest.
+      if (!updated) {
+        speedTestTimestampLast = undefined;
+      }
     }
   } catch (error) {
     logger.error(error);
@@ -585,7 +611,7 @@ async function pollFirewalla(fwGroup) {
     process.exit();
   } else {
     let foundDevice = false;
-    devices.forEach(async (device) => {
+    devices.forEach((device) => {
       if (!(device.id in knownDevices)) {
         foundDevice = true;
         knownDevices[device.id] = device.attributes.friendly_name;
@@ -594,11 +620,11 @@ async function pollFirewalla(fwGroup) {
           device.attributes.friendly_name || "Unknown",
         );
       }
-      await updateHA(device);
     });
     if (foundDevice) {
       logger.info(`${devices.length} devices`);
     }
+    await updateSensors(devices);
   }
 }
 
