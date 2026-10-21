@@ -5,7 +5,7 @@ FROM ghcr.io/home-assistant/base:latest
 COPY config.yaml /
 RUN grep version < config.yaml | grep -oe '[0-9\.]*' > VERSION && rm config.yaml
 
-ENV LANG C.UTF-8
+ENV LANG=C.UTF-8
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 RUN apk add --no-cache nodejs npm
