@@ -1,3 +1,9 @@
+## [4.3.0] - 2026-10-21
+
+### Changed
+
+- save the Firewalla login and reuse it, so polling no longer needs the internet once logged in
+
 ## [4.2.0] - 2026-10-21
 
 ### Changed
