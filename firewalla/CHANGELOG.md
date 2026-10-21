@@ -1,3 +1,10 @@
+## [4.3.1] - 2026-10-21
+
+### Fixed
+
+- log failed Home Assistant sensor updates as one line per poll instead of a stack trace per device
+- retry speedtest sensor updates that failed
+
 ## [4.3.0] - 2026-10-21
 
 ### Changed
