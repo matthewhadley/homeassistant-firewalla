@@ -2,6 +2,7 @@
 *.pem
 *.key
 debug.json
+group.json
 .env
 
 node_modules/

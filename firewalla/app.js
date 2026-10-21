@@ -7,6 +7,7 @@ import {
 } from "node-firewalla";
 import dayjs from "dayjs";
 import fetch from "node-fetch";
+import { readFile, unlink, writeFile } from "node:fs/promises";
 
 const FIREWALLA_VERSION = process.env.FIREWALLA_VERSION || "dev";
 const FIREWALLA_IP = process.env.FIREWALLA_IP || "192.168.1.1";
@@ -29,6 +30,7 @@ const SUPERVISOR_TOKEN = process.env.SUPERVISOR_TOKEN;
 const DEBUG_LOCAL = process.env.DEBUG_LOCAL === "true";
 const DEBUG = process.env.FIREWALLA_DEBUG === "true";
 const HA_URL = process.env.HA_URL || "http://supervisor/core";
+const GROUP_PATH = DEBUG_LOCAL ? "group.json" : "/data/group.json";
 let knownDevices = {};
 
 function formatMessage(message) {
@@ -411,120 +413,214 @@ async function firewallaCall(description, fn) {
   }
 }
 
-async function queryFirewalla() {
+// A box that cannot decrypt a request answers with an error that reaches here
+// as a plain object with no response code. Anything else (an Error from the
+// network, a string while the box starts up, a response carrying a code) says
+// nothing about the key.
+function isKeyRejection(error) {
+  return (
+    error !== null &&
+    typeof error === "object" &&
+    !(error instanceof Error) &&
+    !("code" in error)
+  );
+}
+
+if (DEBUG_LOCAL) {
+  SecureUtil.importKeyPair("etp.public.pem", "etp.private.pem");
+} else {
+  SecureUtil.importKeyPairFromString(
+    FIREWALLA_PUBLIC_KEY_STRING,
+    FIREWALLA_PRIVATE_KEY_STRING,
+  );
+}
+
+// The box checks only that a request decrypts with the group key, not the
+// cloud login token, so the group from a login is kept in memory and saved to
+// GROUP_PATH. The cloud login happens only when there is no usable saved
+// group or the box rejects its key, which lets polling carry on through an
+// internet outage.
+let fwGroup = null;
+
+function groupFromJson(group) {
+  const fwGroup = FWGroup.fromJson(group, FIREWALLA_IP);
+
+  // Boxes with the "rekey" feature rotate the group key and only accept
+  // messages encrypted with the rotated key, which node-firewalla ignores.
+  const rkey = group.symmetricKeys[0].rkey;
+  if (rkey) {
+    fwGroup.symmetricKeyPlain = SecureUtil.rsaDecrypt(JSON.parse(rkey).key);
+  }
+
+  // Decrypt now, so a group that doesn't match the key pair fails here.
+  fwGroup.getSymmetricKey();
+  return fwGroup;
+}
+
+async function loadSavedGroup() {
+  let saved;
   try {
-    if (DEBUG_LOCAL) {
-      SecureUtil.importKeyPair("etp.public.pem", "etp.private.pem");
+    saved = await readFile(GROUP_PATH, "utf8");
+  } catch (error) {
+    if (error.code !== "ENOENT") {
+      logger.warn("Could not read saved Firewalla login", error);
+    }
+    return null;
+  }
+
+  try {
+    return groupFromJson(JSON.parse(saved));
+  } catch (error) {
+    logger.warn("Saved Firewalla login is unusable", error);
+    return null;
+  }
+}
+
+async function login() {
+  const loginResponse = await firewallaCall("login", () => FWGroupApi.login());
+  const groups = loginResponse?.groups;
+  if (!groups?.length) {
+    throw new Error(
+      `Firewalla login returned no groups: ${JSON.stringify({ ...loginResponse, access_token: undefined })}`,
+    );
+  }
+  const group = groupFromJson(groups[0]);
+  logger.info("Logged in to Firewalla");
+
+  try {
+    await writeFile(GROUP_PATH, JSON.stringify(groups[0]), { mode: 0o600 });
+  } catch (error) {
+    logger.warn("Could not save Firewalla login", error);
+  }
+  return group;
+}
+
+async function getGroup() {
+  if (!fwGroup) {
+    fwGroup = await loadSavedGroup();
+    if (fwGroup) {
+      logger.info("Using saved Firewalla login");
     } else {
-      SecureUtil.importKeyPairFromString(
-        FIREWALLA_PUBLIC_KEY_STRING,
-        FIREWALLA_PRIVATE_KEY_STRING,
+      fwGroup = await login();
+    }
+  }
+  return fwGroup;
+}
+
+async function forgetGroup() {
+  fwGroup = null;
+  try {
+    await unlink(GROUP_PATH);
+  } catch (error) {
+    if (error.code !== "ENOENT") {
+      logger.warn("Could not remove saved Firewalla login", error);
+    }
+  }
+}
+
+async function pollFirewalla(fwGroup) {
+  let networkService = new NetworkService(fwGroup);
+  let speedTest = await firewallaCall("speedtest request", () =>
+    networkService.getSpeedtestResults(),
+  );
+
+  try {
+    let speedTestTimestamp = dayjs(
+      Math.floor(speedTest.results[0].timestamp) * 1000,
+    ).format("YYYY-MM-DDTHH:mm:ss");
+    if (speedTestTimestampLast !== speedTestTimestamp) {
+      speedTestTimestampLast = speedTestTimestamp;
+      let speedTestUpload = parseFloat(
+        speedTest.results[0].result.upload.toFixed(2),
       );
-    }
-
-    const loginResponse = await firewallaCall("login", () =>
-      FWGroupApi.login(),
-    );
-    const groups = loginResponse?.groups;
-    if (!groups?.length) {
-      throw new Error(
-        `Firewalla login returned no groups: ${JSON.stringify({ ...loginResponse, access_token: undefined })}`,
+      let speedTestDownload = parseFloat(
+        speedTest.results[0].result.download.toFixed(2),
       );
-    }
-    let fwGroup = FWGroup.fromJson(groups[0], FIREWALLA_IP);
 
-    // Boxes with the "rekey" feature rotate the group key and only accept
-    // messages encrypted with the rotated key, which node-firewalla ignores.
-    const rkey = groups[0].symmetricKeys[0].rkey;
-    if (rkey) {
-      fwGroup.symmetricKeyPlain = SecureUtil.rsaDecrypt(JSON.parse(rkey).key);
-    }
+      logger.info(
+        `speedTest ${speedTestUpload} Mbit/s up, ${speedTestDownload} Mbit/s down (timestamp ${speedTestTimestamp})`,
+      );
 
-    let networkService = new NetworkService(fwGroup);
-    let speedTest = await firewallaCall("speedtest request", () =>
-      networkService.getSpeedtestResults(),
-    );
-
-    try {
-      let speedTestTimestamp = dayjs(
-        Math.floor(speedTest.results[0].timestamp) * 1000,
-      ).format("YYYY-MM-DDTHH:mm:ss");
-      if (speedTestTimestampLast !== speedTestTimestamp) {
-        speedTestTimestampLast = speedTestTimestamp;
-        let speedTestUpload = parseFloat(
-          speedTest.results[0].result.upload.toFixed(2),
-        );
-        let speedTestDownload = parseFloat(
-          speedTest.results[0].result.download.toFixed(2),
-        );
-
-        logger.info(
-          `speedTest ${speedTestUpload} Mbit/s up, ${speedTestDownload} Mbit/s down (timestamp ${speedTestTimestamp})`,
-        );
-
-        await updateHA({
-          id: "speedtest_upload",
-          state: speedTestUpload,
-          attributes: {
-            icon: "mdi:speedometer",
-            device_class: "data_rate",
-            state_class: "measurement",
-            friendly_name: "SpeedTest Upload",
-            unit_of_measurement: "Mbit/s",
-            timestamp: speedTestTimestamp,
-          },
-        });
-
-        await updateHA({
-          id: "speedtest_download",
-          state: speedTestDownload,
-          attributes: {
-            icon: "mdi:speedometer",
-            device_class: "data_rate",
-            state_class: "measurement",
-            friendly_name: "SpeedTest Download",
-            unit_of_measurement: "Mbit/s",
-            timestamp: speedTestTimestamp,
-          },
-        });
-      }
-    } catch (error) {
-      logger.error(error);
-    }
-
-    // List all hosts connected to your firewalla
-    let hostService = new HostService(fwGroup);
-    let hosts = await firewallaCall("hosts request", () =>
-      hostService.getAll(),
-    );
-
-    let devices = processHosts(hosts);
-
-    const keepEntityIds = devices.map((d) => d.id).filter((id) => !!id);
-    await cleanupFirewallaDevices(keepEntityIds);
-
-    if (DEBUG_LOCAL) {
-      console.log(JSON.stringify(devices, 0, 2));
-      process.exit();
-    } else {
-      let foundDevice = false;
-      devices.forEach(async (device) => {
-        if (!(device.id in knownDevices)) {
-          foundDevice = true;
-          knownDevices[device.id] = device.attributes.friendly_name;
-          logger.info(
-            "Found device",
-            device.attributes.friendly_name || "Unknown",
-          );
-        }
-        await updateHA(device);
+      await updateHA({
+        id: "speedtest_upload",
+        state: speedTestUpload,
+        attributes: {
+          icon: "mdi:speedometer",
+          device_class: "data_rate",
+          state_class: "measurement",
+          friendly_name: "SpeedTest Upload",
+          unit_of_measurement: "Mbit/s",
+          timestamp: speedTestTimestamp,
+        },
       });
-      if (foundDevice) {
-        logger.info(`${devices.length} devices`);
-      }
+
+      await updateHA({
+        id: "speedtest_download",
+        state: speedTestDownload,
+        attributes: {
+          icon: "mdi:speedometer",
+          device_class: "data_rate",
+          state_class: "measurement",
+          friendly_name: "SpeedTest Download",
+          unit_of_measurement: "Mbit/s",
+          timestamp: speedTestTimestamp,
+        },
+      });
     }
   } catch (error) {
     logger.error(error);
+  }
+
+  // List all hosts connected to your firewalla
+  let hostService = new HostService(fwGroup);
+  let hosts = await firewallaCall("hosts request", () => hostService.getAll());
+
+  let devices = processHosts(hosts);
+
+  const keepEntityIds = devices.map((d) => d.id).filter((id) => !!id);
+  await cleanupFirewallaDevices(keepEntityIds);
+
+  if (DEBUG_LOCAL) {
+    console.log(JSON.stringify(devices, 0, 2));
+    process.exit();
+  } else {
+    let foundDevice = false;
+    devices.forEach(async (device) => {
+      if (!(device.id in knownDevices)) {
+        foundDevice = true;
+        knownDevices[device.id] = device.attributes.friendly_name;
+        logger.info(
+          "Found device",
+          device.attributes.friendly_name || "Unknown",
+        );
+      }
+      await updateHA(device);
+    });
+    if (foundDevice) {
+      logger.info(`${devices.length} devices`);
+    }
+  }
+}
+
+async function queryFirewalla() {
+  try {
+    await pollFirewalla(await getGroup());
+  } catch (error) {
+    if (!isKeyRejection(error?.cause)) {
+      logger.error(error);
+      return;
+    }
+
+    logger.warn("Firewalla box rejected the key, logging in again");
+    await forgetGroup();
+    try {
+      await pollFirewalla(await getGroup());
+    } catch (retryError) {
+      if (isKeyRejection(retryError?.cause)) {
+        await forgetGroup();
+      }
+      logger.error(retryError);
+    }
   }
 }
 
