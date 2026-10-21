@@ -1,3 +1,9 @@
+## [4.3.2] - 2026-10-21
+
+### Changed
+
+- use the `ENV key=value` form in the Dockerfile
+
 ## [4.3.1] - 2026-10-21
 
 ### Fixed
