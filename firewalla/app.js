@@ -195,7 +195,9 @@ async function getHaDeleteBaseUrl() {
   return haDeleteBaseUrl;
 }
 
-haDeleteBaseUrl = await getHaDeleteBaseUrl();
+if (!DEBUG_LOCAL) {
+  haDeleteBaseUrl = await getHaDeleteBaseUrl();
+}
 
 // Return an array of entity_ids for all sensor.firewalla_network_device_* in Home Assistant
 async function getHomeAssistantFirewallaNetworkDevices() {
@@ -394,8 +396,13 @@ async function updateHA(data) {
 
 // Update all the sensors and log any failures as one line, since Home
 // Assistant being unreachable fails every one of them the same way. Returns
-// whether all of them were updated.
+// whether all of them were updated. Running locally, print them instead.
 async function updateSensors(sensors) {
+  if (DEBUG_LOCAL) {
+    console.log(JSON.stringify(sensors, 0, 2));
+    return true;
+  }
+
   const failures = (await Promise.all(sensors.map(updateHA))).filter(Boolean);
   if (failures.length) {
     logger.error(
@@ -603,13 +610,13 @@ async function pollFirewalla(fwGroup) {
 
   let devices = processHosts(hosts);
 
-  const keepEntityIds = devices.map((d) => d.id).filter((id) => !!id);
-  await cleanupFirewallaDevices(keepEntityIds);
-
   if (DEBUG_LOCAL) {
     console.log(JSON.stringify(devices, 0, 2));
     process.exit();
   } else {
+    const keepEntityIds = devices.map((d) => d.id).filter((id) => !!id);
+    await cleanupFirewallaDevices(keepEntityIds);
+
     let foundDevice = false;
     devices.forEach((device) => {
       if (!(device.id in knownDevices)) {
