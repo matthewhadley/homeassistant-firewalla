@@ -1,3 +1,10 @@
+## [4.4.0] - 2026-10-22
+
+### Added
+
+- add `connection` and `port` device attributes: the Firewalla AP or switch each device connects through, and the port it is wired into
+- set `ap` for devices wired into an AP
+
 ## [4.3.2] - 2026-10-21
 
 ### Changed
