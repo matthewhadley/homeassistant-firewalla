@@ -1,5 +1,6 @@
 import {
   SecureUtil,
+  FWCmdMessage,
   FWGroup,
   FWGroupApi,
   HostService,
@@ -134,6 +135,29 @@ function getStaInfo(host, accessPointNameByBssid = {}) {
     bssid: bssid || "-",
     ap: accessPointNameByBssid[bssid] || "-",
   };
+}
+
+// Map the MAC of each online device, AP and switch to the Firewalla AP or
+// switch it connects through, from the AP controller's tree of the network
+// (box, switches, APs, devices). A device wired into an AP's own port has that
+// AP.
+function buildUplinkByMac(tree) {
+  const uplinks = {};
+  const visit = (node) => {
+    for (const child of node.children || []) {
+      const mac = normalizeMac(child.mac);
+      if (mac && node.type !== "box") {
+        uplinks[mac] = {
+          type: node.type,
+          name: node.name || node.mac,
+          port: child.connectionType === "wired" ? child.parent_port : null,
+        };
+      }
+      visit(child);
+    }
+  };
+  (Array.isArray(tree) ? tree : []).forEach(visit);
+  return uplinks;
 }
 
 /**
@@ -280,7 +304,7 @@ async function cleanupFirewallaDevices(keepEntityIds = []) {
   }
 }
 
-function processHosts(data) {
+function processHosts(data, uplinkByMac = {}) {
   // console.log(JSON.stringify(data, 0, 2));
   const accessPointNameByBssid = buildAccessPointNameByBssid(data.hosts);
 
@@ -301,6 +325,7 @@ function processHosts(data) {
         host,
         accessPointNameByBssid,
       );
+      const uplink = uplinkByMac[normalizeMac(MAC)];
       if (!ipRaw && !name) {
         return null;
       }
@@ -340,7 +365,9 @@ function processHosts(data) {
           ssid,
           rssi,
           bssid,
-          ap,
+          ap: uplink?.type === "ap" ? uplink.name : ap,
+          connection: uplink?.name || ap,
+          port: uplink?.port || "-",
         },
       };
     })
@@ -544,6 +571,33 @@ async function forgetGroup() {
   }
 }
 
+let uplinkFailing = false;
+
+// Fetch the AP controller's network tree through the box. Devices still update
+// without it, falling back to guessing the AP from the BSSID, so a failure is
+// logged once rather than every poll.
+async function getUplinkByMac(fwGroup) {
+  try {
+    const status = await firewallaCall("network tree request", () =>
+      FWGroupApi.sendMessageToBox(
+        fwGroup,
+        new FWCmdMessage("fwapc", {
+          method: "GET",
+          path: "/status/wired_station",
+        }),
+      ),
+    );
+    uplinkFailing = false;
+    return buildUplinkByMac(status?.info?.tree);
+  } catch (error) {
+    if (!uplinkFailing) {
+      uplinkFailing = true;
+      logger.warn(error);
+    }
+    return {};
+  }
+}
+
 async function pollFirewalla(fwGroup) {
   let networkService = new NetworkService(fwGroup);
   let speedTest = await firewallaCall("speedtest request", () =>
@@ -608,7 +662,7 @@ async function pollFirewalla(fwGroup) {
   let hostService = new HostService(fwGroup);
   let hosts = await firewallaCall("hosts request", () => hostService.getAll());
 
-  let devices = processHosts(hosts);
+  let devices = processHosts(hosts, await getUplinkByMac(fwGroup));
 
   if (DEBUG_LOCAL) {
     console.log(JSON.stringify(devices, 0, 2));
